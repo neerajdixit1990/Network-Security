@@ -1,0 +1,11 @@
+rm max-count
+rm ports
+tcpdump -n -r hw1.pcap udp | grep -E '^[0-9]{1,2}:' | awk -F " " '{print $5}' | awk -F "." '{print $5}' | awk -F ":" '{print $1}' | grep -E [0-9]+ | sort -g | uniq -c | awk -F " " '{print $1}' | sort -g -r | head -5 >> max-count
+tcpdump -n -r hw1.pcap udp | grep -E '^[0-9]{1,2}:' | awk -F " " '{print $5}' | awk -F "." '{print $5}' | awk -F ":" '{print $1}' | grep -E [0-9]+ | sort -g | uniq -c >> ports
+cat max-count | while read LINE
+do
+grep -w $LINE ports
+done
+rm max-count
+rm ports
+
