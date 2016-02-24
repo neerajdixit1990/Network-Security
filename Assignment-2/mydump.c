@@ -17,12 +17,11 @@ process_packet(	u_char 				*user,
 
 void 
 offline_read(char	*filename,
-		  char	*filter_string) {
-    	struct pcap_pkthdr 	*header = NULL;
-    	const u_char 		*packet = NULL;
+	     char	*filter_string) {
 	pcap_t 			*ret = NULL;
     	char 			errbuf[PCAP_ERRBUF_SIZE];
 	int			result = 0;
+	struct bpf_program      fp;
 
 	ret = pcap_open_offline(filename, errbuf);
 	if (ret == NULL) {
@@ -30,14 +29,26 @@ offline_read(char	*filename,
 		return;
 	}
 
-	while(1) {
-		result = pcap_next_ex(ret, &header, &packet);
-		if (result == -2)
-			break;
+        if(filter_string != NULL) {
 
-		packet_count++;	
-	}
-	printf("\n%d packets read ...", packet_count);
+                result = pcap_compile(ret, &fp, filter_string, 0, PCAP_NETMASK_UNKNOWN);
+                if (result == -1) {
+                        printf("\nFailed to compile filter for device : %s\n", pcap_geterr(ret));
+                        return;
+                }
+
+                result = pcap_setfilter(ret, &fp);
+                if (result == -1) {
+                        printf("\nFailed to set device filter !!!\n");
+                        return;
+                }
+        }
+
+        result = pcap_loop(ret, 0, process_packet, NULL);
+        if (result < 0) {
+                printf("\nEn-expected error occurred in live packet capture !!!");
+        }
+
 }
 
 void
