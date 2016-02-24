@@ -1,2 +1,6 @@
 References:
-http://www.tcpdump.org/pcap.html
+http://www.itcpdump.org/pcap.html
+http://www.tcpdump.org/oldweb/pcap3_man.html
+http://yuba.stanford.edu/~casado/pcap/section3.html
+http://linux.die.net/man/3/pcap_open_live
+http://linux.die.net/man/3/pcap_compile

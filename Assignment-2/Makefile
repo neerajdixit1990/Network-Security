@@ -9,7 +9,7 @@ all: mydump
 mydump: mydump.o 
 	${CC} ${FLAGS} -o mydump mydump.o ${LIBS}
 mydump.o: mydump.c
-	${CC} ${CFLAGS} -c mydump.c
+	${CC} ${FLAGS} -c mydump.c
 
 
 clean:
