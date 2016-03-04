@@ -191,58 +191,22 @@
 [Neeraj] TCP SYN flag appears in both the first session initiation message as well as the ACK for the SYN. So we should calculate the packets with both packets set
 	 to find out the number of TCP connections made
 
-	neeraj@neeraj:~/Desktop/Network-Security$ tcpdump 'tcp[tcpflags] & tcp-syn != 0 and tcp[tcpflags] & tcp-ack != 0' -n -r hw1.pcap | wc -l
+	neeraj@neeraj:~/Desktop/Network-Security/Assignment-1$ tcpdump 'tcp[tcpflags] & tcp-syn != 0 and tcp[tcpflags] & tcp-ack == 0' -n -r hw1.pcap | wc -l
 	reading from file hw1.pcap, link-type EN10MB (Ethernet)
-	38
+	37
+
 
 ======================================================================================================================================
 
 1.9 Towards which ports were TCP connection attempts made?
 [Neeraj] Filter the TCP SYN packets and then filter the TCP destination port from these messages
 
-	neeraj@neeraj:~/Desktop/Network-Security$ tcpdump 'tcp[tcpflags] & tcp-syn != 0' -n -r hw1.pcap | awk -F " " '{print $5}' | awk -F "." '{print $5}' | awk -F ":" '{print $1}' | sort -g | uniq
+	neeraj@neeraj:~/Desktop/Network-Security$ tcpdump 'tcp[tcpflags] & tcp-syn != 0 and tcp[tcpflags] & tcp-ack == 0' -n -r hw1.pcap | awk -F " " '{print $5}' | awk -F "." '{print $5}' | awk -F ":" '{print $1}' | sort -g | uniq
 	reading from file hw1.pcap, link-type EN10MB (Ethernet)
 	80
 	443
 	465
 	9100
-	9485
-	17260
-	19957
-	22272
-	31617
-	36350
-	36889
-	38720
-	39437
-	40341
-	40630
-	42035
-	42230
-	42497
-	42503
-	42533
-	42534
-	42990
-	43029
-	45552
-	47110
-	48734
-	48952
-	48955
-	49291
-	49294
-	49821
-	49836
-	52079
-	52724
-	54634
-	55528
-	55672
-	58460
-	58724
-	59019
-	59034
 
 ======================================================================================================================================
 
@@ -264,20 +228,21 @@
 ======================================================================================================================================
 
 1.11 When (date and time) was the first and last packet of the trace sent?
-[Neeraj] We can use the head and tail command with the trace of packets
+[Neeraj] Use the -tttt flag along with head and tail command
 
 	 ==============
-	 First Packet : 11:37:42.871346
-	 Last packet : 13:27:03.691498
+	 First Packet : 2013-01-12 11:37:42.871346
+	 Last packet : 2013-01-14 13:27:03.691498
 	 ==============
 
-	 neeraj@neeraj:~/Desktop$ tcpdump -n -r hw1.pcap | head -n 1
-	 reading from file hw1.pcap, link-type EN10MB (Ethernet)
-	 11:37:42.871346 ARP, Request who-has 192.168.0.12 tell 192.168.0.1, length 46
+	neeraj@neeraj:~/Desktop/Network-Security/Assignment-1$ tcpdump -n -r hw1.pcap -tttt | head -1
+	reading from file hw1.pcap, link-type EN10MB (Ethernet)
+	2013-01-12 11:37:42.871346 ARP, Request who-has 192.168.0.12 tell 192.168.0.1, length 46
 
-	 neeraj@neeraj:~/Desktop$ tcpdump -n -r hw1.pcap | tail -n 1
-	 reading from file hw1.pcap, link-type EN10MB (Ethernet)
-	 13:27:03.691498 ARP, Request who-has 192.168.0.12 tell 192.168.0.1, length 46
+	neeraj@neeraj:~/Desktop/Network-Security/Assignment-1$ tcpdump -n -r hw1.pcap -tttt | tail -1
+	reading from file hw1.pcap, link-type EN10MB (Ethernet)
+	2013-01-14 13:27:03.691498 ARP, Request who-has 192.168.0.12 tell 192.168.0.1, length 46
+
 
 ======================================================================================================================================
 

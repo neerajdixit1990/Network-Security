@@ -4,15 +4,142 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include <netinet/if_ether.h>
+#include <time.h>
+#include <arpa/inet.h>
 
 int	packet_count = 0;
 
+// structure definition at https://www.winpcap.org/docs/docs_40_2/html/group__wpcap__tut6.html
+/* 4 bytes IP address */
+typedef struct ip_address{
+    u_char byte1;
+    u_char byte2;
+    u_char byte3;
+    u_char byte4;
+}ip_address;
+
+/* IPv4 header */
+typedef struct ip_header{
+    u_char  ver_ihl;        // Version (4 bits) + Internet header length (4 bits)
+    u_char  tos;            // Type of service 
+    u_short tlen;           // Total length 
+    u_short identification; // Identification
+    u_short flags_fo;       // Flags (3 bits) + Fragment offset (13 bits)
+    u_char  ttl;            // Time to live
+    u_char  proto;          // Protocol
+    u_short crc;            // Header checksum
+    ip_address  saddr;      // Source address
+    ip_address  daddr;      // Destination address
+    u_int   op_pad;         // Option + Padding
+}ip_header;
+
+/* UDP header*/
+typedef struct udp_header{
+    u_short sport;          // Source port
+    u_short dport;          // Destination port
+    u_short len;            // Datagram length
+    u_short crc;            // Checksum
+}udp_header;
+
+/* Definitions of all packet structures */
+
+/*void process_packet(u_char *param, const struct pcap_pkthdr *header, const u_char *pkt_data)
+{
+    struct tm *ltime;
+    char timestr[16];
+    ip_header *ih;
+    udp_header *uh;
+    u_int ip_len;
+    u_short sport,dport;
+    time_t local_tv_sec;
+
+    local_tv_sec = header->ts.tv_sec;
+    ltime=localtime(&local_tv_sec);
+    strftime( timestr, sizeof timestr, "%H:%M:%S", ltime);
+
+    //printf("%s.%.6d len:%d ", timestr, header->ts.tv_usec, header->len);
+
+    ih = (ip_header *) (pkt_data +
+        14); //length of ethernet header
+
+    ip_len = (ih->ver_ihl & 0xf) * 4;
+    uh = (udp_header *) ((u_char*)ih + ip_len);
+
+    sport = ntohs( uh->sport );
+    dport = ntohs( uh->dport );
+
+    printf("%d.%d.%d.%d.%d -> %d.%d.%d.%d.%d\n",
+        ih->saddr.byte1,
+        ih->saddr.byte2,
+        ih->saddr.byte3,
+        ih->saddr.byte4,
+        sport,
+        ih->daddr.byte1,
+        ih->daddr.byte2,
+        ih->daddr.byte3,
+        ih->daddr.byte4,
+        dport);
+}*/
+
 void
 process_packet(	u_char 				*user,
-		const struct pcap_pkthdr 	*h,
-		const u_char 			*bytes) {
-	packet_count++;
-	printf("\n%d live packets captured", packet_count);
+		const struct pcap_pkthdr 	*header,
+		const u_char 			*p) {
+	u_char			*packet = (u_char *)p;
+	struct ether_header 	*arp_hdr= (struct ether_header *)p;
+	u_char 			*addr_ptr = NULL;
+	int			i = 0;
+	char			*ptr = NULL;
+	u_char			*pkt = NULL;
+	char 			IP[INET_ADDRSTRLEN];
+	int			ip_header_len = 0;
+	ip_address		*ip = NULL;
+
+        packet_count++;
+        printf("\n%dth packet : ", packet_count);
+
+	ptr = ctime(&header->ts.tv_sec);
+	for (i = 0; ptr[i] != '\n'; i++) {
+		printf("%c", ptr[i]);
+	}
+
+	if (ntohs(arp_hdr->ether_type) == ETHERTYPE_IP) {
+		printf(" IP packet ");
+	} else if (ntohs(arp_hdr->ether_type) == ETHERTYPE_ARP) {
+		printf(" ARP packet ");
+	} else {
+		printf(" Non IP-ARP packet ");
+	}
+
+	addr_ptr = arp_hdr->ether_shost;
+	i = ETHER_ADDR_LEN;
+    	printf(" Source MAC Address: ");
+    	do {
+        	printf("%s%x",(i == ETHER_ADDR_LEN) ? " " : ":",*addr_ptr++);
+    	} while(--i>0);
+
+        addr_ptr = arp_hdr->ether_dhost;
+        i = ETHER_ADDR_LEN;
+        printf(" Destination MAC Address: ");
+        do {
+                printf("%s%x",(i == ETHER_ADDR_LEN) ? " " : ":",*addr_ptr++);
+        } while(--i>0);
+
+	// IP packet 
+	pkt = packet + 14;
+	inet_ntop(AF_INET, (struct in_addr *)(packet + 110), IP, INET_ADDRSTRLEN);
+	printf(" Source IP Address: %s ", IP);
+	ip = (ip_address *)(packet + 142);
+	printf(" Second IP = %d.%d.%d.%d", ip->byte1, ip->byte2, ip->byte3, ip->byte4);
+
+	ip_header_len = (pkt[0] & 0xf)*4;
+
+	// TCP/UDP packet
+	pkt = packet + ip_header_len;
+	
+	if (packet_count == 10)
+		exit(1);
 }
 
 void 
