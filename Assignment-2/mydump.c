@@ -42,45 +42,28 @@ typedef struct udp_header{
     u_short crc;            // Checksum
 }udp_header;
 
-/* Definitions of all packet structures */
-
-/*void process_packet(u_char *param, const struct pcap_pkthdr *header, const u_char *pkt_data)
-{
-    struct tm *ltime;
-    char timestr[16];
-    ip_header *ih;
-    udp_header *uh;
-    u_int ip_len;
-    u_short sport,dport;
-    time_t local_tv_sec;
-
-    local_tv_sec = header->ts.tv_sec;
-    ltime=localtime(&local_tv_sec);
-    strftime( timestr, sizeof timestr, "%H:%M:%S", ltime);
-
-    //printf("%s.%.6d len:%d ", timestr, header->ts.tv_usec, header->len);
-
-    ih = (ip_header *) (pkt_data +
-        14); //length of ethernet header
-
-    ip_len = (ih->ver_ihl & 0xf) * 4;
-    uh = (udp_header *) ((u_char*)ih + ip_len);
-
-    sport = ntohs( uh->sport );
-    dport = ntohs( uh->dport );
-
-    printf("%d.%d.%d.%d.%d -> %d.%d.%d.%d.%d\n",
-        ih->saddr.byte1,
-        ih->saddr.byte2,
-        ih->saddr.byte3,
-        ih->saddr.byte4,
-        sport,
-        ih->daddr.byte1,
-        ih->daddr.byte2,
-        ih->daddr.byte3,
-        ih->daddr.byte4,
-        dport);
-}*/
+// http://www.tcpdump.org/pcap.html
+typedef struct tcp_header {
+	u_short sport;	/* source port */
+	u_short dport;	/* destination port */
+	u_int	th_seq;		/* sequence number */
+	u_int	th_ack;		/* acknowledgement number */
+	u_char th_offx2;	/* data offset, rsvd */
+		#define TH_OFF(th)	(((th)->th_offx2 & 0xf0) >> 4)
+	u_char th_flags;
+		#define TH_FIN 0x01
+		#define TH_SYN 0x02
+		#define TH_RST 0x04
+		#define TH_PUSH 0x08
+		#define TH_ACK 0x10
+		#define TH_URG 0x20
+		#define TH_ECE 0x40
+		#define TH_CWR 0x80
+		#define TH_FLAGS (TH_FIN|TH_SYN|TH_RST|TH_ACK|TH_URG|TH_ECE|TH_CWR)
+	u_short th_win;		/* window */
+	u_short th_sum;		/* checksum */
+	u_short th_urp;		/* urgent pointer */
+}tcp_header;
 
 void
 process_packet(	u_char 				*user,
@@ -89,12 +72,15 @@ process_packet(	u_char 				*user,
 	u_char			*packet = (u_char *)p;
 	struct ether_header 	*arp_hdr= (struct ether_header *)p;
 	u_char 			*addr_ptr = NULL;
-	int			i = 0;
+	int			i = 0, j = 0, count = 0;
 	char			*ptr = NULL;
 	u_char			*pkt = NULL;
-	char 			IP[INET_ADDRSTRLEN];
 	int			ip_header_len = 0;
 	ip_address		*ip = NULL;
+	ip_header		*p_hdr = NULL;
+	udp_header		*udp = NULL;
+	tcp_header		*tcp = NULL;
+	char			temp[20] = {0};
 
         packet_count++;
         printf("\n%dth packet : ", packet_count);
@@ -103,41 +89,80 @@ process_packet(	u_char 				*user,
 	for (i = 0; ptr[i] != '\n'; i++) {
 		printf("%c", ptr[i]);
 	}
+	//printf("\t%s", ctime(&header->ts.tv_sec));
 
 	if (ntohs(arp_hdr->ether_type) == ETHERTYPE_IP) {
-		printf(" IP packet ");
+		printf("\tIP packet\t");
 	} else if (ntohs(arp_hdr->ether_type) == ETHERTYPE_ARP) {
-		printf(" ARP packet ");
+		printf("\tARP packet\t");
 	} else {
-		printf(" Non IP-ARP packet ");
+		printf("\tNon IP-ARP packet\t");
 	}
 
 	addr_ptr = arp_hdr->ether_shost;
 	i = ETHER_ADDR_LEN;
-    	printf(" Source MAC Address: ");
+    	printf("\nSource MAC Address: ");
     	do {
         	printf("%s%x",(i == ETHER_ADDR_LEN) ? " " : ":",*addr_ptr++);
     	} while(--i>0);
 
         addr_ptr = arp_hdr->ether_dhost;
         i = ETHER_ADDR_LEN;
-        printf(" Destination MAC Address: ");
+        printf("\tDestination MAC Address: ");
         do {
                 printf("%s%x",(i == ETHER_ADDR_LEN) ? " " : ":",*addr_ptr++);
         } while(--i>0);
 
+	if (ntohs(arp_hdr->ether_type) == ETHERTYPE_ARP) {
+		printf("\n=======================================================================\n");
+        	return;
+	}
+
 	// IP packet 
-	pkt = packet + 14;
-	inet_ntop(AF_INET, (struct in_addr *)(packet + 110), IP, INET_ADDRSTRLEN);
-	printf(" Source IP Address: %s ", IP);
-	ip = (ip_address *)(packet + 142);
-	printf(" Second IP = %d.%d.%d.%d", ip->byte1, ip->byte2, ip->byte3, ip->byte4);
+	p_hdr = (ip_header *)(packet + 14);
+	printf("\nSource IP Address:");
+	printf(" %d.%d.%d.%d ", p_hdr->saddr.byte1, p_hdr->saddr.byte2, p_hdr->saddr.byte3, p_hdr->saddr.byte4);
+        printf("\tDestination IP Address:");
+        printf(" %d.%d.%d.%d ", p_hdr->daddr.byte1, p_hdr->daddr.byte2, p_hdr->daddr.byte3, p_hdr->daddr.byte4);
 
-	ip_header_len = (pkt[0] & 0xf)*4;
+        // TCP/UDP packet
+        ip_header_len = (p_hdr->ver_ihl & 0xf)*4;
 
-	// TCP/UDP packet
-	pkt = packet + ip_header_len;
-	
+	if(p_hdr->proto == 1) {
+		printf(" ICMP packet ");
+	} else if(p_hdr->proto == 6) {
+		tcp = (struct tcp_header *)(packet + 14 + ip_header_len);
+		printf("\nTCP packet ");
+		printf("\tSource Port: %d ", tcp->sport);
+		printf("\tDestn Port: %d", tcp->dport);
+		printf("\tLength = %ld", strlen(packet + 14 + ip_header_len + TH_OFF(tcp)));
+	} else if (p_hdr->proto == 17) {
+		udp = (struct udp_header *)(packet + 14 + ip_header_len);
+		printf("\nUDP packet ");
+                printf("\tSource Port: %d ", ntohs(udp->sport));
+                printf("\tDestn Port: %d", ntohs(udp->dport));
+		//printf("\tLength = %ld", strlen(packet + 14 + ip_header_len + 8));
+		printf("\tLength = %lu", (size_t)header->len-42);
+		printf("\n=========");
+		printf("\nPAYLOAD:");
+		printf("\n=========\n");
+		count = 0;
+		for (i = 14 + ip_header_len + 8; packet[i] != '\0';) {
+			temp[count++] = packet[i];
+			printf(" %02x ", packet[i++]);
+			if ((i - 14 - ip_header_len - 8)%15 == 0) {
+				temp[count] = '\0';
+				printf("\t%s", temp);
+				printf("\n");
+				count = 0;
+			}
+		}
+		printf("\n");
+	} else {
+		printf("\nOther packet ");
+	}	
+
+	printf("\n=======================================================================\n");
 	if (packet_count == 10)
 		exit(1);
 }
