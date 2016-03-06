@@ -136,6 +136,30 @@ process_packet(	u_char 				*user,
 		printf("\tSource Port: %d ", tcp->sport);
 		printf("\tDestn Port: %d", tcp->dport);
 		printf("\tLength = %ld", strlen(packet + 14 + ip_header_len + TH_OFF(tcp)));
+
+		// check for payload filter
+		if ( user != NULL &&
+		     strstr(packet + 14 + ip_header_len + TH_OFF(tcp), user) == NULL) {
+			printf("\nTCP Payload mismatch, NOT dumping payload !!!");
+			printf("\n=======================================================================\n");
+			return;
+		}
+
+                printf("\n=============");
+                printf("\nTCP PAYLOAD:");
+                printf("\n=============\n");
+                count = 0;
+                for (i = 14 + ip_header_len + TH_OFF(tcp); packet[i] != '\0';) {
+                        temp[count++] = packet[i];
+                        printf(" %02x ", packet[i++]);
+                        if ((i - 14 - ip_header_len - TH_OFF(tcp))%15 == 0) {
+                                temp[count] = '\0';
+                                printf("\t%s", temp);
+                                printf("\n");
+                                count = 0;
+                        }
+                }
+                printf("\n");
 	} else if (p_hdr->proto == 17) {
 		udp = (struct udp_header *)(packet + 14 + ip_header_len);
 		printf("\nUDP packet ");
@@ -143,9 +167,18 @@ process_packet(	u_char 				*user,
                 printf("\tDestn Port: %d", ntohs(udp->dport));
 		//printf("\tLength = %ld", strlen(packet + 14 + ip_header_len + 8));
 		printf("\tLength = %lu", (size_t)header->len-42);
-		printf("\n=========");
-		printf("\nPAYLOAD:");
-		printf("\n=========\n");
+
+                // check for payload filter
+                if ( user != NULL &&
+                     strstr(packet + 14 + ip_header_len + 8, user ) == NULL) {
+                        printf("\nUDP Payload mismatch, NOT dumping payload !!!");
+			printf("\n=======================================================================\n");
+                        return;
+                }   
+
+		printf("\n============");
+		printf("\nUDP PAYLOAD:");
+		printf("\n============\n");
 		count = 0;
 		for (i = 14 + ip_header_len + 8; packet[i] != '\0';) {
 			temp[count++] = packet[i];
@@ -169,7 +202,8 @@ process_packet(	u_char 				*user,
 
 void 
 offline_read(char	*filename,
-	     char	*filter_string) {
+	     char	*filter_string,
+	     char	*payload_string) {
 	pcap_t 			*ret = NULL;
     	char 			errbuf[PCAP_ERRBUF_SIZE];
 	int			result = 0;
@@ -196,7 +230,7 @@ offline_read(char	*filename,
                 }
         }
 
-        result = pcap_loop(ret, 0, process_packet, NULL);
+        result = pcap_loop(ret, 0, process_packet, payload_string);
         if (result < 0) {
                 printf("\nEn-expected error occurred in live packet capture !!!");
         }
@@ -205,7 +239,8 @@ offline_read(char	*filename,
 
 void
 online_read(char        *interface,
-            char  	*filter_string) {
+            char  	*filter_string,
+	    char	*payload_string) {
 	char 			errbuf[PCAP_ERRBUF_SIZE];
 	int			result = 0;
 	bpf_u_int32 		mask;		
@@ -215,7 +250,7 @@ online_read(char        *interface,
 
         live_device = pcap_open_live(interface, BUFSIZ, 1, 0, errbuf);
         if (live_device == NULL) {
-        	printf("\nFailed to open device for live capture : %s\n", errbuf);
+        	printf("\nFailed to open interface in PROMISCIOUS mode: %s\n", errbuf);
 		return;
         }
 
@@ -239,7 +274,7 @@ online_read(char        *interface,
 		}
 	}
 
-	result = pcap_loop(live_device, 0, process_packet, NULL);
+	result = pcap_loop(live_device, 0, process_packet, payload_string);
 	if (result < 0) {
 		printf("\nEn-expected error occurred in live packet capture !!!");
 	}		
@@ -250,6 +285,7 @@ int main(int argc, char **argv) {
 	int	count = 0;
 	char	*interface = NULL;
 	char	*filename = NULL;
+	char	*payload_string = NULL;
 	char	filter_string[50] = {0};
 	int	index = -1;	
 
@@ -264,15 +300,8 @@ int main(int argc, char **argv) {
 				printf("\nr present = %s", filename);
 			break;
 			case 's':
-				index = optind-1;
-				while(1) {
-					if (argv[index] == NULL || strstr((const char *)argv[index], "-"))
-						break;
-					strcat(filter_string, (const char *)argv[index]);
-					strcat(filter_string, " ");
-					index++;	
-				}
-				printf("\ns present = %s", filter_string);
+				payload_string = optarg;
+				printf("\ns present = %s", payload_string);
 			break;
 			case '?':
 				printf("\nUn-supported option passed !!!");
@@ -283,6 +312,18 @@ int main(int argc, char **argv) {
 		}
 		count++;
 	}
+
+	if (2*count+1 < argc) {
+		printf("\nBPF filter present ...");
+                index = 2*count + 1;
+                while(1) {
+                	if (argv[index] == NULL || strstr((const char *)argv[index], "-"))
+                        	break;
+                        strcat(filter_string, (const char *)argv[index]);
+                        strcat(filter_string, " ");
+                        index++;    
+            	}
+	}
 	
 	if (interface != NULL && filename != NULL) {
 		printf("\nEither interface name or filename should be given !!!");
@@ -291,7 +332,7 @@ int main(int argc, char **argv) {
 
 	if (filename != NULL) {
 		/* Read from pcap file */
-		offline_read(filename, filter_string);
+		offline_read(filename, filter_string, payload_string);
 	} else {
 		if (interface == NULL) {
         		interface = pcap_lookupdev(errbuf);
@@ -301,7 +342,7 @@ int main(int argc, char **argv) {
         		}
         		printf("\nDefault device is %s", interface);
 		}
-		online_read(interface, filter_string);
+		online_read(interface, filter_string, payload_string);
 	}
 
 	return 0;
