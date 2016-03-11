@@ -138,12 +138,12 @@ process_packet(	u_char 				*user,
 	}
 
 	if (ntohs(arp_hdr->ether_type) == ETHERTYPE_IP) {
-		printf("\tIP packet\t");
+		printf("\tEther-type: IP\t");
 	} else if (ntohs(arp_hdr->ether_type) == ETHERTYPE_ARP) {
-		printf("\t\tARP packet\t");
-		printf("\tLength = %d ", header->len);
+		printf("\t\tEther-type: ARP\t");
+		printf("\tARP length = %d ", header->len);
 	} else {
-		printf("\tNon IP-ARP packet\t");
+		printf("\tEther-type: Non IP-ARP\t");
 	}
 
 	addr_ptr = arp_hdr->ether_shost;
@@ -212,7 +212,7 @@ process_packet(	u_char 				*user,
 		printf("\n============\n");
 		print_payload(packet + 14 + ip_header_len + 8, header->len - (14 + ip_header_len + 8));
 	} else {
-		printf("\nOther packet ");
+		printf("\nOTHER packet\n");
 		print_payload(packet + 14 + ip_header_len,  header->len - 14 - ip_header_len);
 	}	
 
@@ -230,7 +230,7 @@ offline_read(char	*filename,
 
 	ret = pcap_open_offline(filename, errbuf);
 	if (ret == NULL) {
-		printf("Unable to open pcap file : %s\n", errbuf);
+		printf("Unable to open pcap file: %s\n", errbuf);
 		return;
 	}
 
@@ -251,7 +251,7 @@ offline_read(char	*filename,
 
         result = pcap_loop(ret, 0, process_packet, payload_string);
         if (result < 0) {
-                printf("\nEn-expected error occurred in live packet capture !!!");
+                printf("\nEn-expected error occurred in live packet capture !!!\n");
         }
 
 }
@@ -295,7 +295,7 @@ online_read(char        *interface,
 
 	result = pcap_loop(live_device, 0, process_packet, payload_string);
 	if (result < 0) {
-		printf("\nEn-expected error occurred in live packet capture !!!");
+		printf("\nEn-expected error occurred in live packet capture !!!\n");
 	}		
 }
 
@@ -312,28 +312,27 @@ int main(int argc, char **argv) {
 		switch(option) {
 			case 'i':
 				interface = optarg;
-				//printf("\ni present = %s", interface);
+				printf("\nSniffing on interface: %s\n", interface);
 			break;
 			case 'r':
 				filename = optarg;
-				//printf("\nr present = %s", filename);
+				printf("\nReading from pcap file: %s\n", filename);
 			break;
 			case 's':
 				payload_string = optarg;
-				//printf("\ns present = %s", payload_string);
+				printf("\nPayload filter applied is: %s\n", payload_string);
 			break;
 			case '?':
-				printf("\nUn-supported option passed !!!");
+				printf("\nUn-supported option passed !!!\n");
 			break;
 			case ':':
-				printf("\nArgument missing !!!");
+				printf("\nArgument missing !!!\n");
 			break;
 		}
 		count++;
 	}
 
 	if (2*count+1 < argc) {
-		//printf("\nBPF filter present ...");
                 index = 2*count + 1;
                 while(1) {
                 	if (argv[index] == NULL || strstr((const char *)argv[index], "-"))
@@ -342,10 +341,11 @@ int main(int argc, char **argv) {
                         strcat(filter_string, " ");
                         index++;    
             	}
+		printf("\nSetting BPF filter: %s\n", filter_string);
 	}
 	
 	if (interface != NULL && filename != NULL) {
-		printf("\nEither interface name or filename should be given !!!");
+		printf("\nEither interface name or filename should be given as input !!!\n");
 		return 0;
 	}
 
@@ -356,10 +356,10 @@ int main(int argc, char **argv) {
 		if (interface == NULL) {
         		interface = pcap_lookupdev(errbuf);
         		if (interface == NULL) {
-                		printf("\nCould not find default device !!!");
+                		printf("\nCould not find default sniffing device !!!\n");
                 		return 0;
         		}
-        		printf("\nDefault device is %s\n", interface);
+        		printf("\nSniffing on default device: %s\n", interface);
 		}
 		online_read(interface, filter_string, payload_string);
 	}
