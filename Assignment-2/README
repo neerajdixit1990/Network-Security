@@ -1,12 +1,125 @@
-References:
+								   Passive Packet Sniffer
+								============================
+								============================
+								Name 	  	: Neeraj Mohan Dixit
+								SBU ID  	: 109951838
+                                                                ============================
+                                                                ============================
+	
+
+=============
+COMPILE & RUN
+=============
+The program has code file "mydump.c" & makefile "Makefile"
+The program can be compiled by typing "make" in the project directory
+The input for the program is of type "mydump [-i interface] [-r file] [-s string] expression" 
+The program has to be run as root (Appropriate error messages given in program)
+The program would set the device in PROMISCUOUS mode but some devices/OS do not allow this setting
+(We end up capturing the traffic from our own machine in that case)
+
+===============
+IMPLEMENTATION
+===============
+The offline and online mode of operation in determined by the command line arguments
+Packets are captured (via both ways) using a callback function
+Packets of type ARP, TCP, UDP, ICMP are printed along with their payloads
+Some code is adopted from websites like https://www.winpcap.org/docs/docs_40_2/html/group__wpcap__tut6.html
+Payload filter capacity is provided via -s option in command line
+Traffic can also be filtered via BPF filter. The command line BPF filter has to match syntax completely else an error os thrown
+
+=============
+SAMPLE O/P
+=============
+root@neeraj:~/Desktop/Network-Security/Assignment-2$ head -60 abc 
+
+1th packet: Fri Mar 11 01:13:23 2016	IP packet	
+Source MAC Address:  b8:af:67:63:a3:28	Destination MAC Address:  e8:b1:fc:95:48:4f
+Source IP Address: 23.76.105.225 	Destination IP Address: 172.24.18.80 
+TCP packet 	Source Port: 443 	Destn Port: 60976	TCP Length = 63
+=============
+TCP PAYLOAD:
+=============
+ a7  31  d0  5f  80  18  03  ef  bf  1f  00  00  01  01  08 		.1._...........
+ 0a  09  e7  b6  0b  00  55  c5  81  15  03  03  00  1a  3b 		......U.......;
+ 28  66  1d  6f  1e  57  0a  0c  09  58  4d  86  7e  b6  8b 		(f.o.W...XM.~..
+ a8  d7  87  47  64  29  d5  78  78  a4 		...Gd).xx.M.~..
+
+
+=======================================================================
+
+2th packet: Fri Mar 11 01:13:23 2016	IP packet	
+Source MAC Address:  e8:b1:fc:95:48:4f	Destination MAC Address:  b8:af:67:63:a3:28
+Source IP Address: 172.24.18.80 	Destination IP Address: 23.76.105.225 
+TCP packet 	Source Port: 60976 	Destn Port: 443	TCP Length = 32
+=============
+TCP PAYLOAD:
+=============
+ 9e  4f  81  8c  80  10  00  f5  03  ee  00  00  01  01  08 		.O.............
+ 0a  00  56  ea  a2  09  e7  b6  0b 		..V............
+
+
+=======================================================================
+
+3th packet: Fri Mar 11 01:13:23 2016	IP packet	
+Source MAC Address:  b8:af:67:63:a3:28	Destination MAC Address:  e8:b1:fc:95:48:4f
+Source IP Address: 23.76.105.225 	Destination IP Address: 172.24.18.80 
+TCP packet 	Source Port: 443 	Destn Port: 60976	TCP Length = 32
+=============
+TCP PAYLOAD:
+=============
+ a7  31  d0  5f  80  11  03  ef  26  15  00  00  01  01  08 		.1._....&......
+ 0a  09  e7  b6  0b  00  55  c5  81 		......U........
+
+
+=======================================================================
+
+
+
+root@neeraj:~/Desktop/Network-Security/Assignment-2$ ./mydump -r ../Assignment-1/hw1.pcap icmp
+
+1th packet: Mon Jan 14 12:42:31 2013	IP packet	
+Source MAC Address:  c4:3d:c7:17:6f:9b	Destination MAC Address:  0:c:29:e9:94:8e
+Source IP Address: 1.234.31.20 	Destination IP Address: 192.168.0.200 
+ICMP packet 	ICMP Type: 3 	ICMP code: 10 	ICMP length = 90 
+=============
+ICMP PAYLOAD:
+=============
+ 03  0a  95  2a  00  00  00  00  45  00  00  30  00  00  40 		...*....E..0..@
+ 00  2e  06  6a  5a  c0  a8  00  c8  01  ea  1f  14  00  50 		...jZ.........P
+ 7b  81  bd  cd  09  c6  3a  35  22  b0  70  12  39  08  11 		{.....:5".p.9..
+ ab  00  00  02  04  05  b4  01  01  04  02 		............9..
+
+
+=======================================================================
+
+
+root@neeraj:~/Desktop/Network-Security/Assignment-2$ ./mydump -r ../Assignment-1/hw1.pcap -s "magic" icmp
+root@neeraj:~/Desktop/Network-Security/Assignment-2$ ./mydump -r ../Assignment-1/hw1.pcap -s "jZ" icmp
+
+1th packet: Mon Jan 14 12:42:31 2013	IP packet	
+Source MAC Address:  c4:3d:c7:17:6f:9b	Destination MAC Address:  0:c:29:e9:94:8e
+Source IP Address: 1.234.31.20 	Destination IP Address: 192.168.0.200 
+ICMP packet 	ICMP Type: 3 	ICMP code: 10 	ICMP length = 90 
+=============
+ICMP PAYLOAD:
+=============
+ 03  0a  95  2a  00  00  00  00  45  00  00  30  00  00  40 		...*....E..0..@
+ 00  2e  06  6a  5a  c0  a8  00  c8  01  ea  1f  14  00  50 		...jZ.........P
+ 7b  81  bd  cd  09  c6  3a  35  22  b0  70  12  39  08  11 		{.....:5".p.9..
+ ab  00  00  02  04  05  b4  01  01  04  02 		............9..
+
+
+=======================================================================
+
+
+==========
+REFERENCES
+==========
 http://www.itcpdump.org/pcap.html
 http://www.tcpdump.org/oldweb/pcap3_man.html
 http://yuba.stanford.edu/~casado/pcap/section3.html
 http://linux.die.net/man/3/pcap_open_live
 http://linux.die.net/man/3/pcap_compile
-
-Packet Reading links:
-=====================
 http://www.tcpdump.org/sniffex.c
 https://www.winpcap.org/docs/docs_412/html/group__wpcap__tut6.html
 http://www.rhyous.com/2011/11/14/unwrapping-a-packet-with-pcap-and-tcpdump-part-1-ethernet-header/

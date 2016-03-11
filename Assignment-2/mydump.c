@@ -7,6 +7,7 @@
 #include <netinet/if_ether.h>
 #include <time.h>
 #include <arpa/inet.h>
+#include <netinet/ip_icmp.h>
 
 int	packet_count = 0;
 
@@ -66,13 +67,56 @@ typedef struct tcp_header {
 }tcp_header;
 
 void
+print_payload( u_char	*ptr,
+	       int	len) {
+	int	i, count, j;
+	char	temp[20] = {0};	
+
+        count = 0;
+        for (i = 0; i < len;) {
+        	temp[count++] = ptr[i];
+                printf(" %02x ", ptr[i++]);
+                if (i%15 == 0 || i >= len) {
+         		printf("\t\t");
+			for (j = 0; j < 15; j++) {
+				if (isprint(temp[j]))
+					printf("%c", temp[j]);
+				else
+					printf(".");
+			}
+                	printf("\n");
+                	count = 0;
+                }
+       	}
+        printf("\n");
+
+}
+
+int
+is_print (u_char	*user,
+	  u_char	*packet,
+	  size_t	len) {
+
+	size_t		i;
+	
+	for (i = 0; i < len; i++) {
+		if (user[0] == packet[i]) {
+			if (memcmp(user, packet + i, strlen(user)) == 0) {
+				return 1;
+			}
+		}
+	}
+	return 0;
+}
+
+void
 process_packet(	u_char 				*user,
 		const struct pcap_pkthdr 	*header,
 		const u_char 			*p) {
 	u_char			*packet = (u_char *)p;
 	struct ether_header 	*arp_hdr= (struct ether_header *)p;
 	u_char 			*addr_ptr = NULL;
-	int			i = 0, j = 0, count = 0;
+	int			i = 0, j = 0;
 	char			*ptr = NULL;
 	u_char			*pkt = NULL;
 	int			ip_header_len = 0;
@@ -80,21 +124,24 @@ process_packet(	u_char 				*user,
 	ip_header		*p_hdr = NULL;
 	udp_header		*udp = NULL;
 	tcp_header		*tcp = NULL;
-	char			temp[20] = {0};
+	struct icmp		*icmp_hdr = NULL;
 
+	if (user != NULL && is_print(user, packet, header->len) == 0)
+		return;
+	
         packet_count++;
-        printf("\n%dth packet : ", packet_count);
+        printf("\n%dth packet: ", packet_count);
 
 	ptr = ctime(&header->ts.tv_sec);
 	for (i = 0; ptr[i] != '\n'; i++) {
 		printf("%c", ptr[i]);
 	}
-	//printf("\t%s", ctime(&header->ts.tv_sec));
 
 	if (ntohs(arp_hdr->ether_type) == ETHERTYPE_IP) {
 		printf("\tIP packet\t");
 	} else if (ntohs(arp_hdr->ether_type) == ETHERTYPE_ARP) {
-		printf("\tARP packet\t");
+		printf("\t\tARP packet\t");
+		printf("\tLength = %d ", header->len);
 	} else {
 		printf("\tNon IP-ARP packet\t");
 	}
@@ -114,6 +161,10 @@ process_packet(	u_char 				*user,
         } while(--i>0);
 
 	if (ntohs(arp_hdr->ether_type) == ETHERTYPE_ARP) {
+                printf("\n=============");
+                printf("\nARP PACKET");
+                printf("\n=============\n");
+		print_payload(packet, header->len-14);
 		printf("\n=======================================================================\n");
         	return;
 	}
@@ -129,75 +180,43 @@ process_packet(	u_char 				*user,
         ip_header_len = (p_hdr->ver_ihl & 0xf)*4;
 
 	if(p_hdr->proto == 1) {
-		printf(" ICMP packet ");
+		icmp_hdr = (struct icmp *)(packet + 14 + ip_header_len);
+		printf("\nICMP packet ");
+		printf("\tICMP Type: %d ", icmp_hdr->icmp_type);
+		printf("\tICMP code: %d ", icmp_hdr->icmp_code);
+                printf("\tICMP length = %d ", header->len);
+		printf("\n=============");
+                printf("\nICMP PAYLOAD:");
+                printf("\n=============\n");
+		print_payload(packet + 14 + ip_header_len, header->len - (14 + ip_header_len));
 	} else if(p_hdr->proto == 6) {
 		tcp = (struct tcp_header *)(packet + 14 + ip_header_len);
 		printf("\nTCP packet ");
-		printf("\tSource Port: %d ", tcp->sport);
-		printf("\tDestn Port: %d", tcp->dport);
-		printf("\tLength = %ld", strlen(packet + 14 + ip_header_len + TH_OFF(tcp)));
-
-		// check for payload filter
-		if ( user != NULL &&
-		     strstr(packet + 14 + ip_header_len + TH_OFF(tcp), user) == NULL) {
-			printf("\nTCP Payload mismatch, NOT dumping payload !!!");
-			printf("\n=======================================================================\n");
-			return;
-		}
+		printf("\tSource Port: %d ", ntohs(tcp->sport));
+		printf("\tDestn Port: %d", ntohs(tcp->dport));
+		printf("\tTCP Length = %lu", (size_t)header->len - (14 + ip_header_len));
 
                 printf("\n=============");
                 printf("\nTCP PAYLOAD:");
                 printf("\n=============\n");
-                count = 0;
-                for (i = 14 + ip_header_len + TH_OFF(tcp); packet[i] != '\0';) {
-                        temp[count++] = packet[i];
-                        printf(" %02x ", packet[i++]);
-                        if ((i - 14 - ip_header_len - TH_OFF(tcp))%15 == 0) {
-                                temp[count] = '\0';
-                                printf("\t%s", temp);
-                                printf("\n");
-                                count = 0;
-                        }
-                }
-                printf("\n");
+		print_payload(packet + 14 + ip_header_len + TH_OFF(tcp), header->len - (14 + ip_header_len + TH_OFF(tcp)));
 	} else if (p_hdr->proto == 17) {
 		udp = (struct udp_header *)(packet + 14 + ip_header_len);
 		printf("\nUDP packet ");
                 printf("\tSource Port: %d ", ntohs(udp->sport));
                 printf("\tDestn Port: %d", ntohs(udp->dport));
-		//printf("\tLength = %ld", strlen(packet + 14 + ip_header_len + 8));
-		printf("\tLength = %lu", (size_t)header->len-42);
-
-                // check for payload filter
-                if ( user != NULL &&
-                     strstr(packet + 14 + ip_header_len + 8, user ) == NULL) {
-                        printf("\nUDP Payload mismatch, NOT dumping payload !!!");
-			printf("\n=======================================================================\n");
-                        return;
-                }   
+		printf("\tUDP Length = %lu", (size_t)header->len - (14 + ip_header_len));
 
 		printf("\n============");
 		printf("\nUDP PAYLOAD:");
 		printf("\n============\n");
-		count = 0;
-		for (i = 14 + ip_header_len + 8; packet[i] != '\0';) {
-			temp[count++] = packet[i];
-			printf(" %02x ", packet[i++]);
-			if ((i - 14 - ip_header_len - 8)%15 == 0) {
-				temp[count] = '\0';
-				printf("\t%s", temp);
-				printf("\n");
-				count = 0;
-			}
-		}
-		printf("\n");
+		print_payload(packet + 14 + ip_header_len + 8, header->len - (14 + ip_header_len + 8));
 	} else {
 		printf("\nOther packet ");
+		print_payload(packet + 14 + ip_header_len,  header->len - 14 - ip_header_len);
 	}	
 
 	printf("\n=======================================================================\n");
-	if (packet_count == 10)
-		exit(1);
 }
 
 void 
@@ -219,7 +238,7 @@ offline_read(char	*filename,
 
                 result = pcap_compile(ret, &fp, filter_string, 0, PCAP_NETMASK_UNKNOWN);
                 if (result == -1) {
-                        printf("\nFailed to compile filter for device : %s\n", pcap_geterr(ret));
+                        printf("\nFailed to compile filter for device : %s\nThis syntax of BPF filter is not supported\n", pcap_geterr(ret));
                         return;
                 }
 
@@ -257,13 +276,13 @@ online_read(char        *interface,
 	if(filter_string != NULL) {
 		result = pcap_lookupnet(interface, &net, &mask, errbuf);	
 		if (result == -1) {
-			printf("\nFailed to get netmask of the device !!!\n");
+			printf("\nFailed to get netmask of the device !!!\nPlease configure the IP of the interface properly before sniffing\n");
 			return;
 		}
 
 		result = pcap_compile(live_device, &fp, filter_string, 0, net);
                 if (result == -1) {
-                        printf("\nFailed to compile filter for device : %s\n", pcap_geterr(live_device));
+                        printf("\nFailed to compile filter for device : %s\nThis syntax of BPF filter is not supported\n", pcap_geterr(live_device));
                         return;
                 }
 
@@ -293,15 +312,15 @@ int main(int argc, char **argv) {
 		switch(option) {
 			case 'i':
 				interface = optarg;
-				printf("\ni present = %s", interface);
+				//printf("\ni present = %s", interface);
 			break;
 			case 'r':
 				filename = optarg;
-				printf("\nr present = %s", filename);
+				//printf("\nr present = %s", filename);
 			break;
 			case 's':
 				payload_string = optarg;
-				printf("\ns present = %s", payload_string);
+				//printf("\ns present = %s", payload_string);
 			break;
 			case '?':
 				printf("\nUn-supported option passed !!!");
@@ -314,7 +333,7 @@ int main(int argc, char **argv) {
 	}
 
 	if (2*count+1 < argc) {
-		printf("\nBPF filter present ...");
+		//printf("\nBPF filter present ...");
                 index = 2*count + 1;
                 while(1) {
                 	if (argv[index] == NULL || strstr((const char *)argv[index], "-"))
@@ -340,7 +359,7 @@ int main(int argc, char **argv) {
                 		printf("\nCould not find default device !!!");
                 		return 0;
         		}
-        		printf("\nDefault device is %s", interface);
+        		printf("\nDefault device is %s\n", interface);
 		}
 		online_read(interface, filter_string, payload_string);
 	}
