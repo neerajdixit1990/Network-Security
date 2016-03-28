@@ -66,6 +66,19 @@ typedef struct tcp_header {
 	u_short th_urp;		/* urgent pointer */
 }tcp_header;
 
+// http://www.programming-pcap.aldabaknocking.com/code/arpsniffer.c
+typedef struct arp_header_ { 
+    u_int16_t htype;    /* Hardware Type           */ 
+    u_int16_t ptype;    /* Protocol Type           */ 
+    u_char hlen;        /* Hardware Address Length */ 
+    u_char plen;        /* Protocol Address Length */ 
+    u_int16_t oper;     /* Operation Code          */ 
+    u_char sha[6];      /* Sender hardware address */ 
+    u_char spa[4];      /* Sender IP address       */ 
+    u_char tha[6];      /* Target hardware address */ 
+    u_char tpa[4];      /* Target IP address       */ 
+}arp_header; 
+
 void
 print_payload( u_char	*ptr,
 	       int	len) {
@@ -125,6 +138,7 @@ process_packet(	u_char 				*user,
 	udp_header		*udp = NULL;
 	tcp_header		*tcp = NULL;
 	struct icmp		*icmp_hdr = NULL;
+	arp_header		*arp_packet = NULL;
 
 	if (user != NULL && is_print(user, packet, header->len) == 0)
 		return;
@@ -138,33 +152,49 @@ process_packet(	u_char 				*user,
 	}
 
 	if (ntohs(arp_hdr->ether_type) == ETHERTYPE_IP) {
-		printf("\tEther-type: IP\t");
+		printf("\tEther-type: IP (0x%04x)\t", ETHERTYPE_IP);
 	} else if (ntohs(arp_hdr->ether_type) == ETHERTYPE_ARP) {
-		printf("\t\tEther-type: ARP\t");
-		printf("\tARP length = %d ", header->len);
+		printf("\t\tEther-type: ARP (0x%04x)\t", ETHERTYPE_ARP);
+		printf("\tARP length = %d ", header->len - 14);
 	} else {
-		printf("\tEther-type: Non IP-ARP\t");
+		printf("\tEther-type: Non IP-ARP (0x%04x)\t", ntohs(arp_hdr->ether_type));
 	}
 
 	addr_ptr = arp_hdr->ether_shost;
 	i = ETHER_ADDR_LEN;
     	printf("\nSource MAC Address: ");
     	do {
-        	printf("%s%x",(i == ETHER_ADDR_LEN) ? " " : ":",*addr_ptr++);
+        	printf("%s%02x",(i == ETHER_ADDR_LEN) ? " " : ":",*addr_ptr++);
     	} while(--i>0);
 
         addr_ptr = arp_hdr->ether_dhost;
         i = ETHER_ADDR_LEN;
         printf("\tDestination MAC Address: ");
         do {
-                printf("%s%x",(i == ETHER_ADDR_LEN) ? " " : ":",*addr_ptr++);
+                printf("%s%02x",(i == ETHER_ADDR_LEN) ? " " : ":",*addr_ptr++);
         } while(--i>0);
 
 	if (ntohs(arp_hdr->ether_type) == ETHERTYPE_ARP) {
-                printf("\n=============");
+                arp_packet = (arp_header *)(packet+14);
+		if (ntohs(arp_packet->oper) == 1) {
+			printf("\nARP REQUEST from %d.%d.%d.%d for IP address %d.%d.%d.%d\n", arp_packet->spa[0], 
+				arp_packet->spa[1], arp_packet->spa[2], arp_packet->spa[3],
+				arp_packet->tpa[0], arp_packet->tpa[1], arp_packet->tpa[2], arp_packet->tpa[3]);
+		} else if (ntohs(arp_packet->oper) == 2) {
+                        printf("\nARP REPLY %d.%d.%d.%d is-at", arp_packet->spa[0], 
+                                arp_packet->spa[1], arp_packet->spa[2], arp_packet->spa[3]);
+			
+			addr_ptr = /*arp_packet->sha;*/arp_hdr->ether_shost;
+			i = ETHER_ADDR_LEN;
+        		do {
+                		printf("%s%02x",(i == ETHER_ADDR_LEN) ? " " : ":",*addr_ptr++);
+        		} while(--i>0);
+		}
+
+		printf("\n=============");
                 printf("\nARP PACKET");
                 printf("\n=============\n");
-		print_payload(packet, header->len-14);
+		print_payload(packet + 14, header->len-14);
 		printf("\n=======================================================================\n");
         	return;
 	}
@@ -194,7 +224,7 @@ process_packet(	u_char 				*user,
 		printf("\nTCP packet ");
 		printf("\tSource Port: %d ", ntohs(tcp->sport));
 		printf("\tDestn Port: %d", ntohs(tcp->dport));
-		printf("\tTCP Length = %lu", (size_t)header->len - (14 + ip_header_len));
+		printf("\tTCP Length = %lu", (size_t)header->len - (14 + ip_header_len + TH_OFF(tcp)));
 
                 printf("\n=============");
                 printf("\nTCP PAYLOAD:");
@@ -205,7 +235,7 @@ process_packet(	u_char 				*user,
 		printf("\nUDP packet ");
                 printf("\tSource Port: %d ", ntohs(udp->sport));
                 printf("\tDestn Port: %d", ntohs(udp->dport));
-		printf("\tUDP Length = %lu", (size_t)header->len - (14 + ip_header_len));
+		printf("\tUDP Length = %lu", (size_t)header->len - (14 + ip_header_len + 8));
 
 		printf("\n============");
 		printf("\nUDP PAYLOAD:");

@@ -36,49 +36,77 @@ Search string consisting of white spaces have to included within quotes
 =============
 SAMPLE O/P
 =============
-root@neeraj:~/Desktop/Network-Security/Assignment-2$ head -60 abc 
+neeraj@neeraj:~/Desktop/Network-Security/Assignment-2$ sudo ./mydump -i wlan0 tcp
+[sudo] password for neeraj: 
 
-1th packet: Fri Mar 11 01:13:23 2016	IP packet	
-Source MAC Address:  b8:af:67:63:a3:28	Destination MAC Address:  e8:b1:fc:95:48:4f
-Source IP Address: 23.76.105.225 	Destination IP Address: 172.24.18.80 
-TCP packet 	Source Port: 443 	Destn Port: 60976	TCP Length = 63
-=============
-TCP PAYLOAD:
-=============
- a7  31  d0  5f  80  18  03  ef  bf  1f  00  00  01  01  08 		.1._...........
- 0a  09  e7  b6  0b  00  55  c5  81  15  03  03  00  1a  3b 		......U.......;
- 28  66  1d  6f  1e  57  0a  0c  09  58  4d  86  7e  b6  8b 		(f.o.W...XM.~..
- a8  d7  87  47  64  29  d5  78  78  a4 		...Gd).xx.M.~..
+Sniffing on interface: wlan0
 
+Setting BPF filter: tcp 
 
-=======================================================================
-
-2th packet: Fri Mar 11 01:13:23 2016	IP packet	
+1th packet: Fri Mar 11 22:47:48 2016	Ether-type: IP (0x0800)	
 Source MAC Address:  e8:b1:fc:95:48:4f	Destination MAC Address:  b8:af:67:63:a3:28
-Source IP Address: 172.24.18.80 	Destination IP Address: 23.76.105.225 
-TCP packet 	Source Port: 60976 	Destn Port: 443	TCP Length = 32
+Source IP Address: 172.24.20.121 	Destination IP Address: 208.113.163.124 
+TCP packet 	Source Port: 43027 	Destn Port: 80	TCP Length = 30
 =============
 TCP PAYLOAD:
 =============
- 9e  4f  81  8c  80  10  00  f5  03  ee  00  00  01  01  08 		.O.............
- 0a  00  56  ea  a2  09  e7  b6  0b 		..V............
+ 00  00  a0  02  72  10  d6  18  00  00  02  04  05  b4  04 		....r..........
+ 02  08  0a  00  31  64  3e  00  00  00  00  01  03  03  07 		....1d>........
 
 
 =======================================================================
 
-3th packet: Fri Mar 11 01:13:23 2016	IP packet	
+2th packet: Fri Mar 11 22:47:48 2016	Ether-type: IP (0x0800)	
+Source MAC Address:  e8:b1:fc:95:48:4f	Destination MAC Address:  b8:af:67:63:a3:28
+Source IP Address: 172.24.20.121 	Destination IP Address: 208.113.163.124 
+TCP packet 	Source Port: 43028 	Destn Port: 80	TCP Length = 30
+=============
+TCP PAYLOAD:
+=============
+ 00  00  a0  02  72  10  40  77  00  00  02  04  05  b4  04 		....r.@w.......
+ 02  08  0a  00  31  64  3e  00  00  00  00  01  03  03  07 		....1d>........
+
+
+=======================================================================
+
+3th packet: Fri Mar 11 22:47:48 2016	Ether-type: IP (0x0800)	
+Source MAC Address:  e8:b1:fc:95:48:4f	Destination MAC Address:  b8:af:67:63:a3:28
+Source IP Address: 172.24.20.121 	Destination IP Address: 208.113.163.124 
+TCP packet 	Source Port: 43029 	Destn Port: 80	TCP Length = 30
+=============
+TCP PAYLOAD:
+=============
+ 00  00  a0  02  72  10  78  da  00  00  02  04  05  b4  04 		....r.x........
+ 02  08  0a  00  31  64  3e  00  00  00  00  01  03  03  07 		....1d>........
+
+
+=======================================================================
+
+4th packet: Fri Mar 11 22:47:48 2016	Ether-type: IP (0x0800)	
+Source MAC Address:  e8:b1:fc:95:48:4f	Destination MAC Address:  b8:af:67:63:a3:28
+Source IP Address: 172.24.20.121 	Destination IP Address: 208.113.163.124 
+TCP packet 	Source Port: 43030 	Destn Port: 80	TCP Length = 30
+=============
+TCP PAYLOAD:
+=============
+ 00  00  a0  02  72  10  83  13  00  00  02  04  05  b4  04 		....r..........
+ 02  08  0a  00  31  64  3e  00  00  00  00  01  03  03  07 		....1d>........
+
+
+=======================================================================
+
+5th packet: Fri Mar 11 22:47:48 2016	Ether-type: IP (0x0800)	
 Source MAC Address:  b8:af:67:63:a3:28	Destination MAC Address:  e8:b1:fc:95:48:4f
-Source IP Address: 23.76.105.225 	Destination IP Address: 172.24.18.80 
-TCP packet 	Source Port: 443 	Destn Port: 60976	TCP Length = 32
+Source IP Address: 208.113.163.124 	Destination IP Address: 172.24.20.121 
+TCP packet 	Source Port: 80 	Destn Port: 43027	TCP Length = 24
 =============
 TCP PAYLOAD:
 =============
- a7  31  d0  5f  80  11  03  ef  26  15  00  00  01  01  08 		.1._....&......
- 0a  09  e7  b6  0b  00  55  c5  81 		......U........
+ fc  c3  c1  c1  80  12  39  08  38  76  00  00  02  04  05 		......9.8v.....
+ 64  01  01  04  02  01  03  03  07 		d........v.....
 
 
 =======================================================================
-
 
 
 root@neeraj:~/Desktop/Network-Security/Assignment-2$ ./mydump -r ../Assignment-1/hw1.pcap icmp
@@ -115,6 +143,36 @@ ICMP PAYLOAD:
  ab  00  00  02  04  05  b4  01  01  04  02 		............9..
 
 
+neeraj@neeraj:~/Desktop/Network-Security/Assignment-2$ ./mydump -r ../Assignment-1/hw1.pcap abc
+
+Reading from pcap file: ../Assignment-1/hw1.pcap
+
+Setting BPF filter: abc 
+
+Failed to compile filter for device : syntax error
+This syntax of BPF filter is not supported
+
+
+neeraj@neeraj:~/Desktop/Network-Security/Assignment-2$ ./mydump 
+
+Sniffing on default device: bluetooth0
+^C
+
+neeraj@neeraj:~/Desktop/Network-Security/Assignment-2$ sudo ./mydump -i eth0
+
+Sniffing on interface: eth0
+
+Failed to get netmask of the device !!!
+Please configure the IP of the interface properly before sniffing
+neeraj@neeraj:~/Desktop/Network-Security/Assignment-2$ ifconfig
+eth0      Link encap:Ethernet  HWaddr f0:76:1c:1b:6a:f9  
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:1000 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+
 =======================================================================
 
 
@@ -134,3 +192,4 @@ http://stackoverflow.com/questions/8849635/python-dpkt-find-out-if-packet-is-a-t
 https://en.wikipedia.org/wiki/Transmission_Control_Protocol
 https://en.wikipedia.org/wiki/User_Datagram_Protocol
 http://stackoverflow.com/questions/2125845/platform-independent-size-t-format-specifiers-in-c
+http://www.programming-pcap.aldabaknocking.com/code/arpsniffer.c
