@@ -7,71 +7,94 @@
 #include <sys/wait.h>
 #include <arpa/inet.h>
 #include <ctype.h>
-#include<fcntl.h>
 #include "unp.h"
 
-/* AES key for Encryption and Decryption */
-const static unsigned char aes_key[]={0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,0x88,0x99,0xAA,0xBB,0xCC,0xDD,0xEE,0xFF};
+#include <openssl/aes.h>
+#include <openssl/rand.h>
+#include <openssl/hmac.h>
+#include <openssl/buffer.h>
 
-/* Print Encrypted and Decrypted data packets */
-void print_data(const char *tittle, const void* data, int len);
-
-int aes_cbc( )
-{
-	/* Input data to encrypt */
-	unsigned char aes_input[]={0x0,0x1,0x2,0x3,0x4,0x5};
-	
-	/* Init vector */
-	unsigned char iv[AES_BLOCK_SIZE];
-	memset(iv, 0x00, AES_BLOCK_SIZE);
-	
-	/* Buffers for Encryption and Decryption */
-	unsigned char enc_out[sizeof(aes_input)];
-	unsigned char dec_out[sizeof(aes_input)];
-	
-	/* AES-128 bit CBC Encryption */
-	AES_KEY enc_key, dec_key;
-	AES_set_encrypt_key(aes_key, sizeof(aes_key)*8, &enc_key);
-	AES_cbc_encrypt(aes_input, enc_out, sizeof(aes_input), &enc_key, iv, AES_ENCRYPT);
-	/* AES-128 bit CBC Decryption */
-	memset(iv, 0x00, AES_BLOCK_SIZE); // don't forget to set iv vector again, else you can't decrypt data properly
-	AES_set_decrypt_key(aes_key, sizeof(aes_key)*8, &dec_key); // Size of key is in bits
-	AES_cbc_encrypt(enc_out, dec_out, sizeof(aes_input), &dec_key, iv, AES_DECRYPT);
-	
-	/* Printing and Verifying */
-	print_data("\n Original ",aes_input, sizeof(aes_input)); // you can not print data as a string, because after Encryption its not ASCII
-	
-	print_data("\n Encrypted",enc_out, sizeof(enc_out));
-	
-	print_data("\n Decrypted",dec_out, sizeof(dec_out));
-	
-	return 0;
-}
-
-void print_data(const char *tittle, const void* data, int len)
-{
-	printf("%s : ",tittle);
-	const unsigned char * p = (const unsigned char*)data;
-	int i = 0;
-	
-	for (; i<len; ++i)
-		printf("%02X ", *p++);
-	
-	printf("\n");
-}
 
 typedef struct service_ {
 	int	new_fd;
 }service;
 
+// http://stackoverflow.com/questions/20039066/aes-ctr128-encrypt-string-and-vice-versa-ansi-c
+struct ctr_state { 
+    unsigned char ivec[AES_BLOCK_SIZE];  
+    unsigned int num; 
+    unsigned char ecount[AES_BLOCK_SIZE]; 
+};
+
+int
+init_ctr(struct ctr_state *state, const unsigned char *iv)
+{        
+    	state->num = 0;
+    	memset(state->ecount, 0, 16);
+    	memset(state->ivec, 0, 16);
+ 	memcpy(state->ivec, iv, 8);
+}
+
+int
+encrypt_data(char		*input,
+	     char		*output,
+	     int		count,
+	     AES_KEY		*session_key,
+	     struct ctr_state	*state) {
+	
+	int	status = -1;
+
+	status = RAND_bytes(output, 8);
+	if (status != 1) {
+		fprintf(stderr, "Unable to generate initial vector !!!\n");
+		return -1;
+	}
+
+	status = init_ctr(state, output);
+
+	AES_ctr128_encrypt(input, output + 8, count, session_key,
+			   state->ivec, state->ecount, &(state->num));
+
+	return 0;	
+}
+
+
+int
+decrypt_data(char       	*input,
+             char       	*output,
+             int        	count,
+             AES_KEY    	*session_key,
+             struct ctr_state  	*state) {
+        
+        int     status = -1;
+
+        status = init_ctr(state, input);
+
+        AES_ctr128_encrypt(input + 8, output, count - 8, session_key,
+                           state->ivec, state->ecount, &(state->num));     
+
+        return 0;
+}
+
+
 int
 destn_service_handler(int				new_fd,
               	      int       			destn_port,
-              	      char      			*destn) {
+              	      char      			*destn,
+		      char				*key) {
 
-	int			status, destn_soc_fd, no_bytes;
+	int			status, destn_soc_fd;
+	int			send_bytes, recv_bytes;
 	struct sockaddr_in      server;
-	char			buf[4097];
+	char			plain[5000], cipher[5000];
+	struct ctr_state	server_state;
+        AES_KEY                 session_key;
+
+        status = AES_set_encrypt_key(key, 128, &session_key);
+        if (status != 0) {
+                fprintf(stderr, "\nUnable to set session key in client !!!\n");
+                return -1;
+        }
 
         destn_soc_fd = socket(AF_INET, SOCK_STREAM, 0);
         if (destn_soc_fd < 0) {
@@ -89,19 +112,6 @@ destn_service_handler(int				new_fd,
                 fprintf(stderr, "\nUnable to connect server on requested connection !!!\n");
                 return -1;
         }
-
-        /*int flags = fcntl(new_fd, F_GETFL);
-        if (flags == -1) {
-                printf("read sock 1 flag error!\n");
-                printf("Closing connections and exit thread!\n");
-        }
-        fcntl(new_fd, F_SETFL, flags | O_NONBLOCK);
-    
-        flags = fcntl(destn_soc_fd, F_GETFL);
-        if (flags == -1) {
-                printf("read ssh_fd flag error!\n");
-        }
-        fcntl(destn_soc_fd, F_SETFL, flags | O_NONBLOCK);*/
 
         while(1) {
                 fd_set          mon_fd;
@@ -121,49 +131,57 @@ destn_service_handler(int				new_fd,
 
                 if (FD_ISSET(new_fd, &mon_fd)) {
 			/* packet from client, send to server using destn_soc_fd*/
-			no_bytes = Read(new_fd, buf, sizeof(buf));
-                        if (no_bytes > 0) {
-                                fprintf(stderr, "\nFrom client: %s\n",buf);
-                        } else if (no_bytes == 0) {
+			recv_bytes = read(new_fd, cipher, sizeof(cipher));
+                        if (recv_bytes == 0) {
                                 // Server termination will lead to a 0 read on this socket
                                 fprintf(stderr, "\nConnection terminated by remote client !!!\n");
                                 return -1;
-                        } else {
+                        } else if (recv_bytes < 0) {
                                 fprintf(stderr, "\nCannot receive data on server socket !!!\n");
                                 return -1;
                         }
+
+			status = decrypt_data(cipher, plain, recv_bytes, &session_key, &server_state);
+			if (status != 0) {
+				fprintf(stderr, "\nUnable to decrypt data at server !!!\n");
+				return -1;
+			}
 	
-                        Write(destn_soc_fd, buf, no_bytes);
-                        /*if (no_bytes <= 0) {
+                        send_bytes = write(destn_soc_fd, plain, recv_bytes - 8);
+                        if (send_bytes <= 0) {
                                 fprintf(stderr, "\nCannot send data to server !!!");
-                        } else if (no_bytes < strlen(buf)) {
+                        } else if (send_bytes < (recv_bytes - 8)) {
                                 fprintf(stderr, "\nPartial send occurred ...");
-                        }*/
-			fprintf(stderr, "\nSend to SSH server done with %d\n", no_bytes);
+                        }
+			//fprintf(stderr, "\nSend to SSH server done with %d\n", no_bytes - 8);
 		}
 		
 		if (FD_ISSET(destn_soc_fd, &mon_fd)) {
 			/* packet from proxy, send to client using new_fd*/
-                        no_bytes = Read(destn_soc_fd, buf, sizeof(buf));
-                        if (no_bytes > 0) {
-                                fprintf(stderr, "\nFrom proxy: %s\n",buf);
-                        } else if (no_bytes == 0) {
+                        recv_bytes = read(destn_soc_fd, plain, sizeof(plain));
+                        if (recv_bytes == 0) {
                                 // Server termination will lead to a 0 read on this socket
                                 fprintf(stderr, "\nConnection terminated by SSH server !!!\n");
                                 return -1;
-                        } else {
+                        } else if (recv_bytes < 0) {
                                 fprintf(stderr, "\nCannot receive data on proxy socket !!!\n");
                                 return -1;
                         }
 
+			status = encrypt_data(plain, cipher, recv_bytes, &session_key, &server_state);
+                        if (status != 0) {
+                                fprintf(stderr, "\nUnable to encrypt data at server !!!\n");
+                                return -1;
+                        }
+
 			//fprintf(stderr,"\nPreparing for send ....\n");
-                        Write(new_fd, buf, no_bytes);
-                        /*if (no_bytes <= 0) {
+                        send_bytes = write(new_fd, cipher, recv_bytes + 8);
+                        if (send_bytes <= 0) {
                                 fprintf(stderr, "\nCannot send data to server !!!");
-                        } else if (no_bytes < strlen(buf)) {
+                        } else if (send_bytes < (recv_bytes + 8)) {
                                 fprintf(stderr, "\nPartial send occurred ...");
-                        }*/
-			fprintf(stderr, "\nSend to client done with %d\n", no_bytes);
+                        }
+			//fprintf(stderr, "\nSend to client done with %d\n", no_bytes);
 		}
 	}
 }
@@ -199,9 +217,19 @@ client_connections(char		*destn,
 }
 
 int
-client_launch(int	soc_fd) {
-	int		status = -1, no_bytes = -1;
-	char		buf[4097], *ret_ptr = NULL;
+client_launch(int	soc_fd,
+ 	      char	*key) {
+	int			status = -1;
+	int			send_bytes, recv_bytes;
+	char			plain[5000], cipher[5000];
+	struct ctr_state        client_state;
+       	AES_KEY 		session_key;
+
+	status = AES_set_encrypt_key(key, 128, &session_key);
+	if (status != 0) {
+		fprintf(stderr, "\nUnable to set session key in client !!!\n");
+		return -1;
+	}
 
 	while(1) {
 		fd_set 		mon_fd;
@@ -218,30 +246,41 @@ client_launch(int	soc_fd) {
 		}
 		
 		if (FD_ISSET(STDIN_FILENO, &mon_fd)) {
-			no_bytes = read(STDIN_FILENO, buf, sizeof(buf));
-			
-			no_bytes = write(soc_fd, buf, no_bytes);
-			if (no_bytes <= 0) {
+			recv_bytes = read(STDIN_FILENO, plain, sizeof(plain));
+		
+			status = encrypt_data(plain, cipher, recv_bytes, &session_key, &client_state);
+			if (status != 0) {
+				fprintf(stderr, "\nUnable to encrypt data at client !!!\n");
+				return -1;
+			}
+	
+			send_bytes = write(soc_fd, cipher, recv_bytes + 8);
+			if (send_bytes <= 0) {
 				fprintf(stderr, "\nCannot send data on client socket ...");
-			} else if (no_bytes < strlen(buf)) {
+			} else if (send_bytes < (recv_bytes + 8)) {
 				fprintf(stderr, "\nPartial send occurred ...");
 			}
-			fprintf(stderr, "\nSend to server done with %d\n", no_bytes);
+			//fprintf(stderr, "\nSend to server done with %d\n", no_bytes);
 		}
 
 		if (FD_ISSET(soc_fd, &mon_fd)) {
-			no_bytes = read(soc_fd, buf, sizeof(buf));
-			if (no_bytes > 0) {
-				no_bytes = write(STDOUT_FILENO, buf, no_bytes);
-				//fprintf(stderr, "\nServer : %s\t = %d bytes\n", buf, no_bytes);
-			} else if (no_bytes == 0) {
+			recv_bytes = read(soc_fd, cipher, sizeof(cipher));
+			if (recv_bytes == 0) {
 				/* Server termination will lead to a 0 read on this socket */
 				fprintf(stderr, "\nConnection terminated by remote server !!!\n");
 				return -1;
-			} else {
+			} else if (recv_bytes < 0) {
 				fprintf(stderr, "\nCannot receive data on client socket !!!\n");
 				return -1;
-			}   
+			}
+
+                        status = decrypt_data(cipher, plain, recv_bytes, &session_key, &client_state);
+                        if (status != 0) {
+                        	fprintf(stderr, "\nUnable to decrypt data at client !!!\n");
+                        	return -1; 
+                        }
+    
+                        send_bytes = write(STDOUT_FILENO, plain, recv_bytes - 8);
 		}
 	}
 	return 0;	
@@ -284,7 +323,8 @@ server_connections(char		*destn,
 int
 server_launch(int	proxy_soc_fd,
 	      int	destn_port,
-	      char	*destn) {
+	      char	*destn,
+	      char	*key) {
         int     			status = -1, new_fd;
 	struct sockaddr_storage		in_data;
 	socklen_t			in_len;
@@ -309,7 +349,7 @@ server_launch(int	proxy_soc_fd,
 				return -1;
 			}
 
-			status = destn_service_handler(new_fd, destn_port, destn);
+			status = destn_service_handler(new_fd, destn_port, destn, key);
 			if (status != 0) {
 				fprintf(stderr, "\nStatus = %d, Unable to service clients !!! Exiting ...",status);
 				return -1;
@@ -324,11 +364,12 @@ int main(int argc, char **argv) {
         int     	count = 0, soc_fd = -1;
 	int		destn_soc_fd = -1, proxy_soc_fd = -1;
         char    	option;
-        char    	*key_file = NULL;
+        char    	*key_file = NULL, key[21];
         char    	destn[50] = {0}, *ptr = NULL;
         int     	index = -1, status;
-	int		destn_port = -1, proxy_port = -1;
+	int		destn_port = -1, proxy_port = -1, len;
 	long long int	temp = -1;
+	FILE 		*file = NULL;
 
 	if (argc < 4) {
 		fprintf(stderr, "\nPlease enter correct number of arguments !!!\n");
@@ -339,6 +380,19 @@ int main(int argc, char **argv) {
                 switch(option) {
                         case 'k':
                                 key_file = optarg;
+				file = fopen(key_file, "r");
+				if (file == NULL) {
+					fprintf(stderr, "\nKey file not present, please provide complete path for key file\n");
+					return -1;
+				}
+
+				ptr = fgets(key, 21, file);
+				if (strlen(key) != 17) {
+					fprintf(stderr, "\nKey length should be 16 bytes only, check key file\n");
+				}
+				key[16] = '\0';
+        			//printf("Retrieved key: %s\tLength = %zd\n", key, strlen(key));
+
                         break;
                         case 'l':
 				temp = strtol(optarg, &ptr, 10);
@@ -366,7 +420,7 @@ int main(int argc, char **argv) {
         	return 0;
         } 
 	destn_port = (int)temp;
-	fprintf(stderr, "\nKey File = %s, proxy port = %d, destn = %s, destn Port = %d\n", key_file, proxy_port, destn, destn_port);
+	fprintf(stderr, "\nKey = %s, proxy port = %d, destn = %s, destn Port = %d\n", key, proxy_port, destn, destn_port);
 
 	if (proxy_port == -1) {
 		/* client mode */
@@ -376,7 +430,7 @@ int main(int argc, char **argv) {
 			return -1;
 		}
 
-		status = client_launch(soc_fd);
+		status = client_launch(soc_fd, key);
 		if (status != 0) {
 			fprintf(stderr, "\nClient unable to communicate with server !!!\n");
 			return -1;
@@ -389,7 +443,7 @@ int main(int argc, char **argv) {
                         return -1; 
                 }   
 
-                status = server_launch(proxy_soc_fd, destn_port, destn);
+                status = server_launch(proxy_soc_fd, destn_port, destn, key);
                 if (status != 0) {
                         fprintf(stderr, "\nClient unable to communicate with client !!!\n");
                         return -1; 

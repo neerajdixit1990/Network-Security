@@ -3,7 +3,46 @@ http://www.firmcodes.com/how-do-aes-128-bit-cbc-mode-encryption-c-programming-co
 http://stackoverflow.com/questions/10065993/how-to-switch-to-netcat-traditional-in-ubuntu
 http://unix.stackexchange.com/questions/247074/ssh-protocol-mismatch
 http://www.unixmen.com/play-with-netcat-in-ubuntu/
-
-
 http://stackoverflow.com/questions/3141860/aes-ctr-256-encryption-mode-of-operation-on-openssl
 http://stackoverflow.com/questions/20039066/aes-ctr128-encrypt-string-and-vice-versa-ansi-c
+http://www.gurutechnologies.net/blog/aes-ctr-encryption-in-c/
+
+Current issue ====
+
+SERVER:
+======
+neeraj@neeraj:~/Desktop/Network-Security/Assignment-3$ ./pbproxy -k key -l 2222 localhost 22
+
+Key = 1234567891234560, proxy port = 2222, destn = localhost, destn Port = 22
+
+Connection terminated by remote client !!!
+
+Status = -1, Unable to service clients !!! Exiting ...
+Client unable to communicate with client !!!
+neeraj@neeraj:~/Desktop/Network-Security/Assignment-3$ 
+neeraj@neeraj:~/Desktop/Network-Security/Assignment-3$ 
+neeraj@neeraj:~/Desktop/Network-Security/Assignment-3$ 
+neeraj@neeraj:~/Desktop/Network-Security/Assignment-3$ ./pbproxy -k key -l 2222 localhost 22
+
+Key = 1234567891234560, proxy port = 2222, destn = localhost, destn Port = 22
+
+Connection terminated by remote client !!!
+
+Status = -1, Unable to service clients !!! Exiting ...
+Client unable to communicate with client !!!
+neeraj@neeraj:~/Desktop/Network-Security/Assignment-3$ ./pbproxy -k key -l 2222 localhost 22
+
+Key = 1234567891234560, proxy port = 2222, destn = localhost, destn Port = 22
+
+Cannot receive data on server socket !!!
+
+Status = -1, Unable to service clients !!! Exiting ...
+Client unable to communicate with client !!!
+
+
+CLIENT:
+=======
+neeraj@neeraj:~$ ll
+Bad packet length 2135452514.
+Disconnecting: Packet corrupt
+
