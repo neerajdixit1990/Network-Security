@@ -1,8 +1,8 @@
 CC = gcc
 
-LIBS = -lpthread -lcrypto /home/neeraj/Desktop/Network-Security/unpv13e/libunp.a 
+LIBS = -lpthread -lcrypto 
 	
-FLAGS = -g -O2 -I/home/neeraj/Desktop/Network-Security/unpv13e/lib
+FLAGS = -g -O2 
 
 all: pbproxy 
 

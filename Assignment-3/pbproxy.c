@@ -7,12 +7,13 @@
 #include <sys/wait.h>
 #include <arpa/inet.h>
 #include <ctype.h>
-#include "unp.h"
+#include <time.h>
 
 #include <openssl/aes.h>
 #include <openssl/rand.h>
 #include <openssl/hmac.h>
 #include <openssl/buffer.h>
+#include <netinet/tcp.h>
 
 
 typedef struct service_ {
@@ -27,7 +28,7 @@ struct ctr_state {
 };
 
 int
-init_ctr(struct ctr_state *state, const unsigned char *iv)
+init_ctr(struct ctr_state *state, char *iv)
 {        
     	state->num = 0;
     	memset(state->ecount, 0, 16);
@@ -83,13 +84,15 @@ destn_service_handler(int				new_fd,
               	      char      			*destn,
 		      char				*key) {
 
-	int			status, destn_soc_fd;
+	int			status, destn_soc_fd, i;
 	int			send_bytes, recv_bytes;
 	struct sockaddr_in      server;
 	char			plain[5000], cipher[5000];
 	struct ctr_state	server_state;
         AES_KEY                 session_key;
-
+	int 			flag = 1;
+	struct timespec 	time;
+	
         status = AES_set_encrypt_key(key, 128, &session_key);
         if (status != 0) {
                 fprintf(stderr, "\nUnable to set session key in client !!!\n");
@@ -109,9 +112,17 @@ destn_service_handler(int				new_fd,
 
         status = connect(destn_soc_fd, (struct sockaddr *)&server, sizeof(server));
         if (status != 0) {
-                fprintf(stderr, "\nUnable to connect server on requested connection !!!\n");
+                fprintf(stderr, "\nUnable to connect to SSH port !!!\nPlease check the SSH port no. & permission\n");
                 return -1;
         }
+
+        status = setsockopt(destn_soc_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
+        if (status < 0)
+                fprintf(stderr,"\nUnable to set SSH socket with NO DELAY option !!!\n");
+
+        status = setsockopt(new_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
+        if (status < 0)
+                fprintf(stderr,"\nUnable to set client socket with NO DELAY option !!!\n");
 
         while(1) {
                 fd_set          mon_fd;
@@ -133,13 +144,11 @@ destn_service_handler(int				new_fd,
 			/* packet from client, send to server using destn_soc_fd*/
 			recv_bytes = read(new_fd, cipher, sizeof(cipher));
                         if (recv_bytes == 0) {
-                                // Server termination will lead to a 0 read on this socket
-                                fprintf(stderr, "\nConnection terminated by remote client !!!\n");
-                                return -1;
-                        } else if (recv_bytes < 0) {
+                        	break;
+			} else if (recv_bytes < 0) {
                                 fprintf(stderr, "\nCannot receive data on server socket !!!\n");
-                                return -1;
-                        }
+                        	break;
+			}
 
 			status = decrypt_data(cipher, plain, recv_bytes, &session_key, &server_state);
 			if (status != 0) {
@@ -153,6 +162,15 @@ destn_service_handler(int				new_fd,
                         } else if (send_bytes < (recv_bytes - 8)) {
                                 fprintf(stderr, "\nPartial send occurred ...");
                         }
+
+			/* This minor delay is introduced in the code as a hack to avoid TCP to coalesce
+			   multiple TCP packets into a single one
+			   This hack along with TCP_NODELAY socket option avoids the coalesce situation
+			   
+			   The ideal solution is to include packet length along with the IV in each packet */
+			time.tv_sec = 0;
+    			time.tv_nsec = 10*1000;
+			nanosleep(&time, NULL);
 			//fprintf(stderr, "\nSend to SSH server done with %d\n", no_bytes - 8);
 		}
 		
@@ -161,12 +179,12 @@ destn_service_handler(int				new_fd,
                         recv_bytes = read(destn_soc_fd, plain, sizeof(plain));
                         if (recv_bytes == 0) {
                                 // Server termination will lead to a 0 read on this socket
-                                fprintf(stderr, "\nConnection terminated by SSH server !!!\n");
-                                return -1;
-                        } else if (recv_bytes < 0) {
-                                fprintf(stderr, "\nCannot receive data on proxy socket !!!\n");
-                                return -1;
-                        }
+                                fprintf(stderr, "\nConnection terminated by SSH server, check for permission on SSH port");
+                        	break;
+			} else if (recv_bytes < 0) {
+                                fprintf(stderr, "\nCannot receive data on SSH socket !!!\n");
+                        	break;
+			}
 
 			status = encrypt_data(plain, cipher, recv_bytes, &session_key, &server_state);
                         if (status != 0) {
@@ -174,16 +192,21 @@ destn_service_handler(int				new_fd,
                                 return -1;
                         }
 
-			//fprintf(stderr,"\nPreparing for send ....\n");
                         send_bytes = write(new_fd, cipher, recv_bytes + 8);
                         if (send_bytes <= 0) {
                                 fprintf(stderr, "\nCannot send data to server !!!");
                         } else if (send_bytes < (recv_bytes + 8)) {
                                 fprintf(stderr, "\nPartial send occurred ...");
                         }
-			//fprintf(stderr, "\nSend to client done with %d\n", no_bytes);
+                        time.tv_sec = 0;
+                        time.tv_nsec = 10*1000;
+                        nanosleep(&time, NULL);
+			//fprintf(stderr, "\nSent %d bytes to client\n", send_bytes);
 		}
 	}
+	close(new_fd);
+	close(destn_soc_fd);
+	return 0;
 }
 
 int	
@@ -193,6 +216,7 @@ client_connections(char		*destn,
 	
 	int 			soc_fd, status; 
 	struct sockaddr_in 	client;
+	int			flag = 1;
 
 	soc_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (soc_fd < 0) {
@@ -208,9 +232,13 @@ client_connections(char		*destn,
 	/* Socket connect, no need to bind */
 	status = connect(soc_fd, (struct sockaddr *)&client, sizeof(client));
 	if (status != 0) {
-		fprintf(stderr, "\nUnable to connect client on requested connection !!!\n");
+		fprintf(stderr, "\nUnable to connect client to server !!!\n");
 		return -1;
 	}
+
+        status = setsockopt(soc_fd, IPPROTO_TCP, TCP_NODELAY, (char *) &flag, sizeof(int));
+        if (status < 0)
+                fprintf(stderr,"\nUnable to set server socket with NO DELAY option !!!\n");
 	
 	*ret = soc_fd;	
 	return 0;	
@@ -219,11 +247,12 @@ client_connections(char		*destn,
 int
 client_launch(int	soc_fd,
  	      char	*key) {
-	int			status = -1;
+	int			status = -1, i;
 	int			send_bytes, recv_bytes;
 	char			plain[5000], cipher[5000];
 	struct ctr_state        client_state;
        	AES_KEY 		session_key;
+	struct timespec         time;
 
 	status = AES_set_encrypt_key(key, 128, &session_key);
 	if (status != 0) {
@@ -236,7 +265,7 @@ client_launch(int	soc_fd,
 		
 		FD_ZERO(&mon_fd);
 		FD_SET(soc_fd, &mon_fd);
-		FD_SET(STDIN_FILENO, &mon_fd);
+		FD_SET(0, &mon_fd);
 		
 		/* Monitor keyboard input and socket input */
 		status = select(soc_fd + 1, &mon_fd, NULL, NULL, NULL);
@@ -245,13 +274,13 @@ client_launch(int	soc_fd,
 			return 0;
 		}
 		
-		if (FD_ISSET(STDIN_FILENO, &mon_fd)) {
-			recv_bytes = read(STDIN_FILENO, plain, sizeof(plain));
+		if (FD_ISSET(0, &mon_fd)) {
+			recv_bytes = read(0, plain, sizeof(plain));
 		
 			status = encrypt_data(plain, cipher, recv_bytes, &session_key, &client_state);
 			if (status != 0) {
 				fprintf(stderr, "\nUnable to encrypt data at client !!!\n");
-				return -1;
+				break;
 			}
 	
 			send_bytes = write(soc_fd, cipher, recv_bytes + 8);
@@ -260,7 +289,9 @@ client_launch(int	soc_fd,
 			} else if (send_bytes < (recv_bytes + 8)) {
 				fprintf(stderr, "\nPartial send occurred ...");
 			}
-			//fprintf(stderr, "\nSend to server done with %d\n", no_bytes);
+                        time.tv_sec = 0;
+                        time.tv_nsec = 10*1000;
+                        nanosleep(&time, NULL);
 		}
 
 		if (FD_ISSET(soc_fd, &mon_fd)) {
@@ -268,10 +299,10 @@ client_launch(int	soc_fd,
 			if (recv_bytes == 0) {
 				/* Server termination will lead to a 0 read on this socket */
 				fprintf(stderr, "\nConnection terminated by remote server !!!\n");
-				return -1;
+				break;
 			} else if (recv_bytes < 0) {
 				fprintf(stderr, "\nCannot receive data on client socket !!!\n");
-				return -1;
+				break;
 			}
 
                         status = decrypt_data(cipher, plain, recv_bytes, &session_key, &client_state);
@@ -279,10 +310,12 @@ client_launch(int	soc_fd,
                         	fprintf(stderr, "\nUnable to decrypt data at client !!!\n");
                         	return -1; 
                         }
-    
-                        send_bytes = write(STDOUT_FILENO, plain, recv_bytes - 8);
+                        //fprintf(stderr, "\nReceived %d bytes from server", recv_bytes);
+ 
+                        send_bytes = write(1, plain, recv_bytes - 8);
 		}
 	}
+	close(soc_fd);
 	return 0;	
 }
 
@@ -328,6 +361,8 @@ server_launch(int	proxy_soc_fd,
         int     			status = -1, new_fd;
 	struct sockaddr_storage		in_data;
 	socklen_t			in_len;
+	struct sockaddr_in 		*t = NULL;
+	char				ip_addr[129];
 
         while(1) {
                 fd_set          mon_fd;
@@ -349,11 +384,17 @@ server_launch(int	proxy_soc_fd,
 				return -1;
 			}
 
+			t = (struct sockaddr_in *)&in_data;
+			inet_ntop(AF_INET, &(t->sin_addr), ip_addr, INET_ADDRSTRLEN);
+			fprintf(stderr, "\n----------------------------------------------------");
+			fprintf(stderr, "\nNew incoming request from %s", ip_addr);
 			status = destn_service_handler(new_fd, destn_port, destn, key);
 			if (status != 0) {
 				fprintf(stderr, "\nStatus = %d, Unable to service clients !!! Exiting ...",status);
 				return -1;
 			}
+			fprintf(stderr, "\nCompleted request for %s", ip_addr);
+			fprintf(stderr,"\n----------------------------------------------------\n");
 		}
         }
         return 0;
@@ -391,8 +432,6 @@ int main(int argc, char **argv) {
 					fprintf(stderr, "\nKey length should be 16 bytes only, check key file\n");
 				}
 				key[16] = '\0';
-        			//printf("Retrieved key: %s\tLength = %zd\n", key, strlen(key));
-
                         break;
                         case 'l':
 				temp = strtol(optarg, &ptr, 10);
@@ -420,7 +459,6 @@ int main(int argc, char **argv) {
         	return 0;
         } 
 	destn_port = (int)temp;
-	fprintf(stderr, "\nKey = %s, proxy port = %d, destn = %s, destn Port = %d\n", key, proxy_port, destn, destn_port);
 
 	if (proxy_port == -1) {
 		/* client mode */
@@ -437,6 +475,7 @@ int main(int argc, char **argv) {
 		}
 	} else {
 		/* server mode */
+		fprintf(stderr, "\nSetting up pbproxy for SSH server\nListening Port = %d\nDestination = %s\nSSH Port = %d\n", proxy_port, destn, destn_port);
 		status = server_connections(destn, proxy_port, &proxy_soc_fd);
                 if (status != 0) {
                         fprintf(stderr, "\nUnable to establish client connections !!!\n");
