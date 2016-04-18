@@ -182,3 +182,6 @@ REFERENCES
 http://www.tcpipguide.com/free/t_DNSMessageHeaderandQuestionSectionFormat.htm
 http://www.ccs.neu.edu/home/amislove/teaching/cs4700/fall09/handouts/project1-primer.pdf
 http://www.binarytides.com/dns-query-code-in-c-with-linux-sockets/
+http://stackoverflow.com/questions/11770451/what-is-the-meaning-of-attribute-packed-aligned4
+http://stackoverflow.com/questions/18452716/are-udp-packets-dropped-when-udp-header-checksum-is-incorrect
+http://www.binarytides.com/raw-udp-sockets-c-linux/
