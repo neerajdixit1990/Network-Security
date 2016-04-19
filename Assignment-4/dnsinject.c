@@ -229,26 +229,30 @@ process_packet(	u_char 				*attack_filename,
 
 	// IP packet 
 	p_hdr = (ip_header *)(packet + 14);
+        if (p_hdr->proto != 17) 
+                return;
 
-        // UDP packet
+	// UDP packet
         ip_header_len = (p_hdr->ver_ihl & 0xf)*4;
+	udp = (struct udp_header *)(packet + 14 + ip_header_len);
 
-	if (p_hdr->proto != 17)
+	// DNS port
+	if (ntohs(udp->dport) != 53)
 		return;
 
         packet_count++;
         printf("\n%dth packet: ", packet_count);
-	
+
         printf("\nSource IP Address:");
         printf(" %d.%d.%d.%d ", p_hdr->saddr.byte1, p_hdr->saddr.byte2, p_hdr->saddr.byte3, p_hdr->saddr.byte4);
         printf("\tDestination IP Address:");
         printf(" %d.%d.%d.%d ", p_hdr->daddr.byte1, p_hdr->daddr.byte2, p_hdr->daddr.byte3, p_hdr->daddr.byte4);
 
-	udp = (struct udp_header *)(packet + 14 + ip_header_len);
-	printf("\nUDP packet ");
+        printf("\nUDP packet ");
         printf("\tSource Port: %d ", ntohs(udp->sport));
         printf("\tDestn Port: %d", ntohs(udp->dport));
-	printf("\tUDP Length = %lu", (size_t)header->len - (14 + ip_header_len + 8));
+        printf("\tUDP Length = %lu", (size_t)header->len - (14 + ip_header_len + 8));
+
 
 	printf("\n============");
 	printf("\nUDP PAYLOAD:");
