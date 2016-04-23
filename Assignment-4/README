@@ -185,3 +185,7 @@ http://www.binarytides.com/dns-query-code-in-c-with-linux-sockets/
 http://stackoverflow.com/questions/11770451/what-is-the-meaning-of-attribute-packed-aligned4
 http://stackoverflow.com/questions/18452716/are-udp-packets-dropped-when-udp-header-checksum-is-incorrect
 http://www.binarytides.com/raw-udp-sockets-c-linux/
+
+http://www.zytrax.com/books/dns/ch15/
+http://www.firewall.cx/networking-topics/protocols/domain-name-system-dns/161-protocols-dns-response.html
+http://stackoverflow.com/questions/9865084/dns-response-answer-authoritative-section
