@@ -7,6 +7,7 @@
 #include <netinet/if_ether.h>
 #include <time.h>
 #include <arpa/inet.h>
+#include <assert.h>
 #include <netinet/ip_icmp.h>
 
 int	packet_count = 0;
@@ -150,6 +151,7 @@ check_dns_response(uint16_t	id,
 
 			inet_ntop(AF_INET, &(resp_data[i].ip), spoofed_ip, INET_ADDRSTRLEN);
 			printf("Spoofed IP = %s\n", spoofed_ip);
+			assert(0);
 			return 1;
 			/*for (k = 0; k < ntohs(dns->answer); k++) {
 				answer = (struct dns_response *)ptr;
