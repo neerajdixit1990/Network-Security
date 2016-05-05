@@ -173,6 +173,8 @@ check_dns_response(uint16_t	id,
         }
 
 	resp_data[i].ip = *(ptr + 12);
+	inet_ntop(AF_INET, &(resp_data[i].ip), spoofed_ip, INET_ADDRSTRLEN);
+	printf("storing IP address = %s\n", spoofed_ip);
 	resp_count++;
         return 0;
 }
@@ -212,7 +214,7 @@ process_packet(	u_char 				*attack_filename,
         packet_count++;
         printf("\n%dth packet: ", packet_count);
 
-        printf("\nSource IP Address:");
+        /*printf("\nSource IP Address:");
         printf(" %d.%d.%d.%d ", p_hdr->saddr.byte1, p_hdr->saddr.byte2, p_hdr->saddr.byte3, p_hdr->saddr.byte4);
         printf("\tDestination IP Address:");
         printf(" %d.%d.%d.%d ", p_hdr->daddr.byte1, p_hdr->daddr.byte2, p_hdr->daddr.byte3, p_hdr->daddr.byte4);
@@ -226,7 +228,7 @@ process_packet(	u_char 				*attack_filename,
 	printf("\n============");
 	printf("\nUDP PAYLOAD:");
 	printf("\n============\n");
-	print_payload(packet + 14 + ip_header_len + 8, header->len - (14 + ip_header_len + 8));
+	print_payload(packet + 14 + ip_header_len + 8, header->len - (14 + ip_header_len + 8));*/
 
 	dns = (struct dns_header *)(packet + 14 + ip_header_len + 8);
 	printf("\nDNS ID = %d\n", ntohs(dns->id));
