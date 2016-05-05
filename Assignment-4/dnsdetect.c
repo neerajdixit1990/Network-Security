@@ -120,7 +120,8 @@ is_print (u_char	*user,
 
 int
 check_dns_response(uint16_t	id,
-		   u_char      	*packet) {
+		   u_char      	*packet,
+		   int		dns_len) {
 
         u_char        	*ptr = NULL;
         int             status = -1;
@@ -163,16 +164,16 @@ check_dns_response(uint16_t	id,
 	}
 
 	resp_data[i].id = id;
-        ptr = (u_char *)(packet + 12);
+        /*ptr = (u_char *)(packet + 12);
         for (k = 0; k < ntohs(dns->questions); k++) {
         	while(*ptr) {
         		ptr = ptr + *ptr + 1;
         	}
         	ptr = ptr + 1;
         	ptr = ptr + 4;
-        }
+        }*/
 
-	resp_data[i].ip = *(ptr + 12);
+	resp_data[i].ip = packet[dns_len - 4]; 
 	inet_ntop(AF_INET, &(resp_data[i].ip), spoofed_ip, INET_ADDRSTRLEN);
 	printf("storing IP address = %s\n", spoofed_ip);
 	resp_count++;
@@ -235,7 +236,8 @@ process_packet(	u_char 				*attack_filename,
 	printf("\nDNS flags = %d\n", ntohs(dns->flags));
 	printf("\nNumber of DNS questions = %d\n", ntohs(dns->questions));
 
-	status = check_dns_response(dns->id, packet + 14 + ip_header_len + 8);
+	status = check_dns_response(dns->id, packet + 14 + ip_header_len + 8,
+				    header->len - (14 + ip_header_len + 8));
 
 	printf("\n=======================================================================\n");
 }
