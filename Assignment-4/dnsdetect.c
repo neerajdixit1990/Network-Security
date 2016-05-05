@@ -173,9 +173,14 @@ check_dns_response(uint16_t	id,
         	ptr = ptr + 4;
         }*/
 
-	resp_data[i].ip = packet[dns_len - 4]; 
-	inet_ntop(AF_INET, &(resp_data[i].ip), spoofed_ip, INET_ADDRSTRLEN);
-	printf("storing IP address = %s\n", spoofed_ip);
+	//resp_data[i].ip = packet[dns_len - 4]; 
+	//inet_ntop(AF_INET, &(resp_data[i].ip), spoofed_ip, INET_ADDRSTRLEN);
+        //packet[dns_len] = '\0';
+        //inet_pton(AF_INET, &packet[dns_len - 4], &resp_data[i].ip);
+	answer = (struct dns_response *)(packet + dns_len - 16);
+	resp_data[i].ip = answer->ip;
+	printf("all octets are : %d.%d.%d.%d\n", packet[dns_len - 4], packet[dns_len - 3], packet[dns_len - 2], packet[dns_len - 1]);
+	printf("storing IP address in integer format = %d\n", resp_data[i].ip);
 	resp_count++;
         return 0;
 }
