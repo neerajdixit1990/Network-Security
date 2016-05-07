@@ -13,7 +13,6 @@
 int	packet_count = 0;
 
 // structure definition at https://www.winpcap.org/docs/docs_40_2/html/group__wpcap__tut6.html
-/* 4 bytes IP address */
 typedef struct ip_address{
     u_char byte1;
     u_char byte2;
@@ -75,49 +74,6 @@ typedef struct dns_resp_info {
 dns_resp_info	resp_data[1001];
 uint32_t	resp_count = 0;
 
-void
-print_payload( u_char	*ptr,
-	       int	len) {
-	int	i, count, j;
-	char	temp[20] = {0};	
-
-        count = 0;
-        for (i = 0; i < len;) {
-        	temp[count++] = ptr[i];
-                printf(" %02x ", ptr[i++]);
-                if (i%15 == 0 || i >= len) {
-         		printf("\t\t");
-			for (j = 0; j < 15; j++) {
-				if (isprint(temp[j]))
-					printf("%c", temp[j]);
-				else
-					printf(".");
-			}
-                	printf("\n");
-                	count = 0;
-                }
-       	}
-        printf("\n");
-
-}
-
-int
-is_print (u_char	*user,
-	  u_char	*packet,
-	  size_t	len) {
-
-	size_t		i;
-	
-	for (i = 0; i < len; i++) {
-		if (user[0] == packet[i]) {
-			if (memcmp(user, packet + i, strlen(user)) == 0) {
-				return 1;
-			}
-		}
-	}
-	return 0;
-}
-
 int
 check_dns_response(uint16_t	id,
 		   u_char      	*packet,
@@ -134,6 +90,7 @@ check_dns_response(uint16_t	id,
 	dns = (struct dns_header *)packet;
         for(i = 0; i < resp_count; i++) {
         	if (resp_data[i].id == id) {
+			printf("\n=======================================================================");
 			printf("\n@@@@@@@@ DNS Poisoning Attack @@@@@@@\n");
 
 		        ptr = (u_char *)(packet + 12);
@@ -149,38 +106,27 @@ check_dns_response(uint16_t	id,
                 		printf("\nDomain name = %s\n", domain_name);
                 		ptr = ptr + 4;
         		}
+			printf("Transaction ID = %d\n", id);
 
 			inet_ntop(AF_INET, &(resp_data[i].ip), spoofed_ip, INET_ADDRSTRLEN);
-			printf("Spoofed IP = %s\n", spoofed_ip);
-			assert(0);
-			return 1;
-			/*for (k = 0; k < ntohs(dns->answer); k++) {
+			printf("Answer 1 = IP: %s\n", spoofed_ip);
+			printf("Answer 2 = ");
+			for (k = 0; k < ntohs(dns->answer); k++) {
 				answer = (struct dns_response *)ptr;
-				if (ntohs(answer->type) == 1)
-				ptr = ptr + 16;
-			}*/
-
+				if (ntohs(answer->type) == 1) {
+					inet_ntop(AF_INET, &(answer->ip), spoofed_ip, INET_ADDRSTRLEN);
+					printf("IP: %s\t",spoofed_ip);
+				}
+				ptr = ptr + 16 + (ntohs(answer->len) - 4);
+			}
+			printf("\n=======================================================================\n");
+			return 1;
 		}
 	}
 
 	resp_data[i].id = id;
-        /*ptr = (u_char *)(packet + 12);
-        for (k = 0; k < ntohs(dns->questions); k++) {
-        	while(*ptr) {
-        		ptr = ptr + *ptr + 1;
-        	}
-        	ptr = ptr + 1;
-        	ptr = ptr + 4;
-        }*/
-
-	//resp_data[i].ip = packet[dns_len - 4]; 
-	//inet_ntop(AF_INET, &(resp_data[i].ip), spoofed_ip, INET_ADDRSTRLEN);
-        //packet[dns_len] = '\0';
-        //inet_pton(AF_INET, &packet[dns_len - 4], &resp_data[i].ip);
 	answer = (struct dns_response *)(packet + dns_len - 16);
 	resp_data[i].ip = answer->ip;
-	printf("all octets are : %d.%d.%d.%d\n", packet[dns_len - 4], packet[dns_len - 3], packet[dns_len - 2], packet[dns_len - 1]);
-	printf("storing IP address in integer format = %d\n", resp_data[i].ip);
 	resp_count++;
         return 0;
 }
@@ -217,34 +163,11 @@ process_packet(	u_char 				*attack_filename,
 	if (ntohs(udp->sport) != 53)
 		return;
 
-        packet_count++;
-        printf("\n%dth packet: ", packet_count);
-
-        /*printf("\nSource IP Address:");
-        printf(" %d.%d.%d.%d ", p_hdr->saddr.byte1, p_hdr->saddr.byte2, p_hdr->saddr.byte3, p_hdr->saddr.byte4);
-        printf("\tDestination IP Address:");
-        printf(" %d.%d.%d.%d ", p_hdr->daddr.byte1, p_hdr->daddr.byte2, p_hdr->daddr.byte3, p_hdr->daddr.byte4);
-
-        printf("\nUDP packet ");
-        printf("\tSource Port: %d ", ntohs(udp->sport));
-        printf("\tDestn Port: %d", ntohs(udp->dport));
-        printf("\tUDP Length = %lu", (size_t)header->len - (14 + ip_header_len + 8));
-
-
-	printf("\n============");
-	printf("\nUDP PAYLOAD:");
-	printf("\n============\n");
-	print_payload(packet + 14 + ip_header_len + 8, header->len - (14 + ip_header_len + 8));*/
-
 	dns = (struct dns_header *)(packet + 14 + ip_header_len + 8);
-	printf("\nDNS ID = %d\n", ntohs(dns->id));
-	printf("\nDNS flags = %d\n", ntohs(dns->flags));
-	printf("\nNumber of DNS questions = %d\n", ntohs(dns->questions));
 
 	status = check_dns_response(dns->id, packet + 14 + ip_header_len + 8,
 				    header->len - (14 + ip_header_len + 8));
 
-	printf("\n=======================================================================\n");
 }
 
 void 
