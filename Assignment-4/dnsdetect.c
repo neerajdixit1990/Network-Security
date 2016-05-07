@@ -68,7 +68,8 @@ typedef struct __attribute__((packed, aligned(1))) dns_response {
 
 typedef struct dns_resp_info {
 	uint16_t	id;
-	uint32_t	ip;	
+	uint32_t	ip[11];
+	int		ip_count;	
 } dns_resp_info;
 
 dns_resp_info	resp_data[1001];
@@ -107,10 +108,13 @@ check_dns_response(uint16_t	id,
                 		ptr = ptr + 4;
         		}
 			printf("Transaction ID = %d\n", id);
-
-			inet_ntop(AF_INET, &(resp_data[i].ip), spoofed_ip, INET_ADDRSTRLEN);
-			printf("Answer 1 = IP: %s\n", spoofed_ip);
-			printf("Answer 2 = ");
+			printf("Answer 1: ");
+			for (k = 0; k < resp_data[i].ip_count; k++) {
+				inet_ntop(AF_INET, &(resp_data[i].ip[k]), spoofed_ip, INET_ADDRSTRLEN);
+				printf("IP: %s ", spoofed_ip);
+			}
+	
+			printf("\nAnswer 2 = ");
 			for (k = 0; k < ntohs(dns->answer); k++) {
 				answer = (struct dns_response *)ptr;
 				if (ntohs(answer->type) == 1) {
@@ -125,8 +129,23 @@ check_dns_response(uint16_t	id,
 	}
 
 	resp_data[i].id = id;
-	answer = (struct dns_response *)(packet + dns_len - 16);
-	resp_data[i].ip = answer->ip;
+	//answer = (struct dns_response *)(packet + dns_len - 16);
+	//resp_data[i].ip = answer->ip;
+        ptr = (u_char *)(packet + 12);
+        for (k = 0; k < ntohs(dns->questions); k++) {
+        	while(*ptr)
+        		ptr = ptr + *ptr + 1;
+        	ptr = ptr + 5;
+        }
+    
+	resp_data[i].ip_count = 0; 
+        for (k = 0; k < ntohs(dns->answer); k++) {
+        	answer = (struct dns_response *)ptr;
+        	if (ntohs(answer->type) == 1)
+        		resp_data[i].ip[resp_data[i].ip_count++] = answer->ip;
+        	ptr = ptr + 16 + (ntohs(answer->len) - 4);
+        }
+
 	resp_count++;
         return 0;
 }
