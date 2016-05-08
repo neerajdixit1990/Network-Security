@@ -1,4 +1,4 @@
-								   Passive Packet Sniffer
+								 DNS Poisoning & Detection 
 								============================
 								============================
 								Name 	  	: Neeraj Mohan Dixit
@@ -17,13 +17,15 @@ The input for the program
 	dnsinject [-i interface] [-f hostnames] expression
 	dnsdetect [-i interface] [-r tracefile] expression
 	(dnsdetect can either read from pcap file (-r option) OR can sniff on a live device (-i option) (NOT BOTH))
-	----------- IMPORTANT -----------
-	Please test both the programs with name server = 8.8.8.8. The program will FAIL if we give nameserver IP != 8.8.8.8
-	---------------------------------
+	----------- VERY IMPORTANT -----------
+	dnsinject works everytime for name server 8.8.8.8. The program may fail for local dns server 
+	dnsdetect works every time for all inputs
+	-------------------------------------
 The program has to be run with root permission (Appropriate error messages given in program)
 The program would set the device in PROMISCUOUS mode but some devices/OS do not allow this setting
 (We end up capturing the traffic from our own machine in that case)
 The command line BPF filter has to match syntax completely else an error is thrown
+The attack file is attached along with submission for reference. The format should be followed (1 space between IP & hostname) 
 
 ===============
 IMPLEMENTATION
