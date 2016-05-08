@@ -107,7 +107,7 @@ check_dns_response(uint16_t	id,
                 		printf("\nDomain name = %s\n", domain_name);
                 		ptr = ptr + 4;
         		}
-			printf("Transaction ID = %d\n", id);
+			printf("Transaction ID = %d (0x%x)\n", id, id);
 			printf("Answer 1: ");
 			for (k = 0; k < resp_data[i].ip_count; k++) {
 				inet_ntop(AF_INET, &(resp_data[i].ip[k]), spoofed_ip, INET_ADDRSTRLEN);
